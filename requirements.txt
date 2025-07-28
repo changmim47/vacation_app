@@ -3,3 +3,4 @@ requests
 python-dotenv
 gunicorn
 python-dateutil
+pandas
