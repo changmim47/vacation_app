@@ -108,8 +108,6 @@
     .fc .fc-daygrid-event-harness {
     overflow: visible !important;
     }
-
-
     .vacation-item {
       background: #f8f9fa;
       border-left: 4px solid #007bff;
@@ -402,10 +400,7 @@
     const calendar = new FullCalendar.Calendar(calendarEl, {
       initialView: 'dayGridMonth',
       locale: 'ko',
-      height: 600,
-      expandRows: true,      // ✅ 행 높이 자동 조정
-      contentHeight: 'auto', // ✅ 내용 따라 높이 확장
-      height: 'auto',
+      height: 1000,
       headerToolbar: {
         left: 'today prev,next',
         center: 'title',
