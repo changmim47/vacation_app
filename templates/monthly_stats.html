@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>월별 휴가 사용 현황</title>
+  <style>
+    table { 
+      border-collapse: collapse; 
+      width: 100%; 
+      margin-top: 20px; 
+    }
+    th, td { 
+      border: 1px solid #ddd; 
+      padding: 8px; 
+      text-align: center; 
+    }
+    th { 
+      background-color: #f2f2f2; 
+    }
+    .btn { 
+      margin-top: 20px; 
+      display: inline-block; 
+      padding: 8px 16px; 
+      background: #007bff; 
+      color: #fff; 
+      text-decoration: none; 
+      border-radius: 20px; }
+  </style>
+</head>
+<body>
+  <h2>📆 월별 휴가 사용 현황</h2>
+  <a href="/download-stats?type=monthly" class="btn">📥 월별 휴가 사용 다운로드</a>
+  <a href="/admin" class="btn">← 관리자 페이지로 돌아가기</a>
+  <table>
+    <thead>
+      <tr>
+        <th>상담원</th>
+        {% for month in stats.values()|list|first|dictsort %}
+          <th>{{ month[0] }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for user, data in stats.items() %}
+        <tr>
+          <td>{{ user }}</td>
+          {% for month, _ in stats.values()|list|first|dictsort %}
+            <td>{{ data.get(month, 0) }}</td>
+          {% endfor %}
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>

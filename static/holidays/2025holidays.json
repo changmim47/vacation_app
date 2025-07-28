@@ -1,0 +1,22 @@
+[
+  { "title": "새해", "start": "2025-01-01", "color": "red", "allDay": true },
+  { "title": "임시공휴일", "start": "2025-01-27", "color": "red", "allDay": true },
+  { "title": "설날 전날", "start": "2025-01-28", "color": "red", "allDay": true },
+  { "title": "설날", "start": "2025-01-29", "color": "red", "allDay": true },
+  { "title": "설날 다음 날", "start": "2025-01-30", "color": "red", "allDay": true },
+  { "title": "3ㆍ1절", "start": "2025-03-01", "color": "red", "allDay": true },
+  { "title": "대체공휴일(3ㆍ1절)", "start": "2025-03-03", "color": "red", "allDay": true },
+  { "title": "어린이날", "start": "2025-05-05", "color": "red", "allDay": true },
+  { "title": "부처님 오신 날", "start": "2025-05-05", "color": "red", "allDay": true },
+  { "title": "대체공휴일(부처님 오신 날)", "start": "2025-05-06", "color": "red", "allDay": true },
+  { "title": "임시공휴일(대통령선거)", "start": "2025-06-03", "color": "red", "allDay": true },
+  { "title": "현충일", "start": "2025-06-06", "color": "red", "allDay": true },
+  { "title": "광복절", "start": "2025-08-15", "color": "red", "allDay": true },
+  { "title": "개천절", "start": "2025-10-03", "color": "red", "allDay": true },
+  { "title": "추석 전날", "start": "2025-10-05", "color": "red", "allDay": true },
+  { "title": "추석", "start": "2025-10-06", "color": "red", "allDay": true },
+  { "title": "추석 다음 날", "start": "2025-10-07", "color": "red", "allDay": true },
+  { "title": "대체공휴일(추석)", "start": "2025-10-08", "color": "red", "allDay": true },
+  { "title": "한글날", "start": "2025-10-09", "color": "red", "allDay": true },
+  { "title": "크리스마스", "start": "2025-12-25", "color": "red", "allDay": true }
+]

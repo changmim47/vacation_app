@@ -1,0 +1,22 @@
+[
+  { "title": "신년", "start": "2026-01-01", "color": "red", "allDay": true },
+  { "title": "설날 전날", "start": "2026-02-16", "color": "red", "allDay": true },
+  { "title": "설날", "start": "2026-02-17", "color": "red", "allDay": true },
+  { "title": "설날 다음 날", "start": "2026-02-18", "color": "red", "allDay": true },
+  { "title": "3ㆍ1절", "start": "2026-03-01", "color": "red", "allDay": true },
+  { "title": "대체공휴일(3ㆍ1절)", "start": "2026-03-02", "color": "red", "allDay": true },
+  { "title": "어린이날", "start": "2026-05-05", "color": "red", "allDay": true },
+  { "title": "부처님 오신 날", "start": "2026-05-24", "color": "red", "allDay": true },
+  { "title": "대체공휴일(부처님 오신 날)", "start": "2026-05-25", "color": "red", "allDay": true },
+  { "title": "전국동시지방선거", "start": "2026-06-03", "color": "red", "allDay": true },
+  { "title": "현충일", "start": "2026-06-06", "color": "red", "allDay": true },
+  { "title": "광복절", "start": "2026-08-15", "color": "red", "allDay": true },
+  { "title": "대체공휴일(광복절)", "start": "2026-08-17", "color": "red", "allDay": true },
+  { "title": "추석 전날", "start": "2026-09-24", "color": "red", "allDay": true },
+  { "title": "추석", "start": "2026-09-25", "color": "red", "allDay": true },
+  { "title": "추석 다음 날", "start": "2026-09-26", "color": "red", "allDay": true },
+  { "title": "개천절", "start": "2026-10-03", "color": "red", "allDay": true },
+  { "title": "대체공휴일(개천절)", "start": "2026-10-05", "color": "red", "allDay": true },
+  { "title": "한글날", "start": "2026-10-09", "color": "red", "allDay": true },
+  { "title": "크리스마스", "start": "2026-12-25", "color": "red", "allDay": true }
+]

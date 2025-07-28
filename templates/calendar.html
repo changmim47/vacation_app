@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>📅 공용 휴가 캘린더</title>
+  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/locales-all.global.min.js"></script>
+  <style>
+    #calendar {
+      max-width: 900px;
+      margin: 40px auto;
+    }
+  </style>
+</head>
+<body>
+  <h2 style="text-align:center;">📅 공용 휴가 캘린더</h2>
+  <div id="calendar"></div>
+  <div style="text-align:center; margin-top: 20px;">
+    <a href="/employee">← 돌아가기</a> | <a href="/admin">관리자</a>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const calendarEl = document.getElementById('calendar');
+      const calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'dayGridMonth',
+        locale: 'ko',
+        height: 'auto',
+        headerToolbar: {
+          left: 'today prev,next',
+          center: 'title',
+          right: 'dayGridMonth,timeGridWeek,listWeek'
+        },
+        // ✅ 공휴일 및 휴가 이벤트 로딩
+        events: function(fetchInfo, successCallback, failureCallback) {
+          const year = fetchInfo.start.getFullYear();
+          const holidayUrl = `/static/holidays/${year}holidays.json`;
+
+          Promise.all([
+            fetch('/vacation-events').then(res => res.json()),
+            fetch(holidayUrl).then(res => res.json()).catch(() => []) // holiday 파일 없을 경우 무시
+          ])
+          .then(([vacationEvents, holidayData]) => {
+            const holidays = holidayData.map(h => ({
+              title: h.title,
+              start: h.date,
+              color: 'red',
+              allDay: true
+            }));
+            successCallback([...vacationEvents, ...holidays]);
+          })
+          .catch(error => {
+            console.error('이벤트 로딩 실패:', error);
+            failureCallback(error);
+          });
+        },
+        // ✅ 주말 색상 설정
+        dayCellDidMount: function(info) {
+          const day = info.date.getDay();
+          const numberEl = info.el.querySelector('.fc-daygrid-day-number');
+          if (numberEl) {
+            if (day === 0) numberEl.style.color = 'red';
+            else if (day === 6) numberEl.style.color = 'blue';
+          }
+        }
+      });
+
+      calendar.render();
+    });
+  </script>
+</body>
+</html>

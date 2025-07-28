@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>직원별 소진 내역</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #f8f9fa;
+      margin: 0;
+      padding: 30px;
+    }
+    h2 {
+      color: #343a40;
+      margin-bottom: 20px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background-color: #fff;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    }
+    th, td {
+      padding: 10px 14px;
+      border: 1px solid #dee2e6;
+      text-align: center;
+      font-size: 14px;
+    }
+    th {
+      background-color: #e9ecef;
+      color: #495057;
+    }
+    tr:nth-child(even) {
+      background-color: #f1f3f5;
+    }
+    .back-link {
+      display: inline-block;
+      margin-bottom: 20px;
+      text-decoration: none;
+      color: #007bff;
+    }
+    .back-link:hover {
+      text-decoration: underline;
+    }
+
+    .btn { 
+        margin-top: 20px; 
+        display: inline-block; 
+        padding: 8px 16px; 
+        background: #007bff; 
+        color: #fff; 
+        text-decoration: none; 
+        border-radius: 20px; 
+    }
+  </style>
+</head>
+<body>
+  <a href="/admin" class="btn">← 관리자 페이지로 돌아가기</a>
+  <a href="/download-used-vacations" class="btn">📥 엑셀 다운로드</a>
+  <h2>📋 직원별 휴가 소진 내역</h2>
+  <table>
+  <thead>
+    <tr>
+      <th>직원명</th>
+      <th>휴가유형</th>
+      <th>사용일수</th>
+      <th>신청일자</th>
+      <th>휴가일자</th>
+      <th>상태</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for v in used_vacations %}
+      <tr>
+        <td>{{ v.name }}</td>
+        <td>{{ v.type }}</td>
+        <td>{{ v.used_days }}</td>
+        <td>{{ v.requested_at }}</td>
+        <td>{{ v.start_date }} ~ {{ v.end_date }}</td>
+        <td>
+          {% if v.status == 'approved' %}✅
+          {% elif v.status == 'pending' %}⏳
+          {% else %}❌
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    {% if used_vacations|length == 0 %}
+      <tr><td colspan="6">사용된 휴가 내역이 없습니다.</td></tr>
+    {% endif %}
+  </tbody>
+</table>
+</body>
+</html>

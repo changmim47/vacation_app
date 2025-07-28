@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>직원 관리</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, sans-serif;
+      background-color: #f8f9fa;
+      margin: 0;
+      padding: 30px;
+      text-align: center; /* ✅ 전체 중앙 정렬 */
+    }
+
+    h2 {
+      color: #343a40;
+    }
+
+    .btn {
+      padding: 8px 14px;
+      background-color: #007bff;
+      color: white;
+      font-weight: bold;
+      border: none;
+      border-radius: 20px;
+      cursor: pointer;
+      text-decoration: none;
+    }
+
+    .btn:hover {
+      background-color: #0056b3;
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+      text-align: left;
+    }
+
+    form.register-form {
+      display: inline-block;
+      text-align: left;
+      padding: 20px 30px;
+      background-color: #fff;
+      border-radius: 10px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.1);
+      margin-bottom: 40px;
+    }
+
+    input[type="text"],
+    input[type="email"],
+    input[type="date"] {
+      width: 260px;
+      padding: 8px;
+      border: 1px solid #ced4da;
+      border-radius: 6px;
+      font-size: 14px;
+      display: block;
+      margin-top: 6px;
+      margin-bottom: 12px;
+    }
+
+    /* 테이블 안 input은 더 작게 */
+    table input[type="date"] {
+      width: 160px;
+    }
+
+    table {
+      margin: 0 auto;
+      border-collapse: collapse;
+      margin-top: 20px;
+      font-size: 13px;
+      background-color: #fff;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.05);
+    }
+
+    th, td {
+      border: 1px solid #ced4da;
+      padding: 6px 10px;
+      text-align: center;
+    }
+
+    th {
+      background-color: #e9ecef;
+    }
+
+    td {
+      background-color: #ffffff;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+      max-width: 800px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .table-container {
+      display: flex;
+      justify-content: center;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h2>👥 직원 관리</h2>
+    <a href="/admin" class="btn">← 관리자 페이지로 돌아가기</a>
+  </div>
+
+  <!-- ✅ 신규 직원 등록 -->
+  <form method="POST" action="/add-user" class="register-form">
+    <div class="form-group">
+      <label for="name">이름</label>
+      <input type="text" id="name" name="name" required>
+    </div>
+    <div class="form-group">
+      <label for="email">이메일</label>
+      <input type="email" id="email" name="email" required>
+    </div>
+    <div class="form-group">
+      <label for="password">비밀번호</label>
+      <input type="text" id="password" name="password" required>
+    </div>
+    <div class="form-group">
+      <label for="join_date">입사일</label>
+      <input type="date" id="join_date" name="join_date" required>
+    </div>
+    <div style="text-align: center;">
+      <button type="submit" class="btn">등록</button>
+    </div>
+  </form>
+
+  <!-- ✅ 직원 목록 테이블 -->
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>이름</th>
+          <th>이메일</th>
+          <th>입사일</th>
+          <th>입사일 수정</th>
+          <th>삭제</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+          {% if u.role != 'admin' %}
+          <tr>
+            <form method="POST" action="/update-join-date">
+              <td>{{ u.name }}</td>
+              <td>{{ u.email }}</td>
+              <td>
+                <input type="hidden" name="id" value="{{ u.id }}">
+                <input type="date" name="join_date" value="{{ u.join_date }}">
+              </td>
+              <td>
+                <button type="submit" class="btn">변경</button>
+              </td>
+            </form>
+            <td>
+              <form method="POST" action="/delete-user/{{ u.id }}" onsubmit="return confirm('정말 삭제하시겠습니까?');">
+                <button type="submit" class="btn" style="background-color:#dc3545;">삭제</button>
+              </form>
+            </td>
+          </tr>
+          {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</body>
+</html>
