@@ -200,9 +200,9 @@ def employee_dashboard():
         today_record = res_today_attendance.json()[0]
         if today_record.get('check_in_time'):
             # time without time zone (HH:MM:SS) 형식으로 저장되었으므로 strptime 사용
-            current_check_in_time = datetime.strptime(today_record['check_in_time'], '%H:%M:%S').strftime('%H:%M')
+            current_check_in_time = datetime.strptime(today_record['check_in_time'], '%H:%M:%S').strftime('%I:%M %p')
         if today_record.get('check_out_time'):
-            current_check_out_time = datetime.strptime(today_record['check_out_time'], '%H:%M:%S').strftime('%H:%M')
+            current_check_out_time = datetime.strptime(today_record['check_out_time'], '%H:%M:%S').strftime('%I:%M %p')
 
     # ... (사용자 정보, 연차/월차, 휴가 목록 관련 기존 코드 유지) ...
     user_res = requests.get(
@@ -290,7 +290,7 @@ def employee_dashboard():
                     try:
                         # record_date_str (YYYY-MM-DD) 와 check_in_time_raw (HH:MM:SS)를 조합
                         dt_in_combined = datetime.strptime(f"{record_date_str} {check_in_time_raw}", '%Y-%m-%d %H:%M:%S')
-                        check_in_display = check_in_time_raw[:5] # HH:MM 형식으로 자르기
+                        check_in_display = dt_in_combined.strftime('%I:%M %p') # HH:MM 형식으로 자르기
                     except ValueError:
                         print(f"출근 시간 또는 날짜 파싱 오류: 날짜={record_date_str}, 시간={check_in_time_raw}")
 
@@ -298,7 +298,7 @@ def employee_dashboard():
                 if check_out_time_raw and record_date_str:
                     try:
                         dt_out_combined = datetime.strptime(f"{record_date_str} {check_out_time_raw}", '%Y-%m-%d %H:%M:%S')
-                        check_out_display = check_out_time_raw[:5] # HH:MM 형식으로 자르기
+                        check_out_display = dt_out_combined.strftime('%I:%M %p') # HH:MM 형식으로 자르기
                     except ValueError:
                         print(f"퇴근 시간 또는 날짜 파싱 오류: 날짜={record_date_str}, 시간={check_out_time_raw}")
 
