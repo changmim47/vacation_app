@@ -10,6 +10,7 @@ import io
 import pandas as pd
 from flask import send_file
 import requests
+import pytz
 
 load_dotenv()
 
@@ -186,7 +187,10 @@ def employee_dashboard():
     }
 
     # 1. 오늘 날짜의 출근/퇴근 기록 가져오기 (출근/퇴근 버튼 표시용)
-    today = datetime.today().date()
+    # KST (한국 표준시) 시간대를 명시적으로 지정하여 오늘 날짜를 가져옵니다.
+    kst_timezone = pytz.timezone('Asia/Seoul')
+    today = datetime.now(kst_timezone).date() # <-- 이 줄을 이렇게 변경해주세요!
+    
     current_check_in_time = None
     current_check_out_time = None
 
