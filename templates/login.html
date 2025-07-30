@@ -1,95 +1,108 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <title>휴가신청 페이지</title>
-  <style>
-    body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background-color: #f0f2f5;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      margin: 0;
-    }
+    <meta charset="UTF-8">
+    <title>학습지원팀 전용 EHR</title>
+    <style>
+        /* 기존 CSS 코드는 그대로 유지합니다. */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
 
-    .login-container {
-      background-color: #fff;
-      padding: 40px 30px;
-      border-radius: 10px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-      width: 100%;
-      max-width: 360px;
-    }
+        .login-container {
+            background-color: #fff;
+            padding: 40px 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 360px;
+        }
 
-    .login-container h2 {
-      text-align: center;
-      color: #343a40;
-      margin-bottom: 25px;
-    }
+        .login-container h2 {
+            text-align: center;
+            color: #343a40;
+            margin-bottom: 25px;
+        }
 
-    label {
-      display: block;
-      margin-bottom: 6px;
-      font-weight: bold;
-      color: #495057;
-      font-size: 14px;
-    }
+        label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: bold;
+            color: #495057;
+            font-size: 14px;
+        }
 
-    input[type="email"],
-    input[type="password"] {
-      width: 100%;
-      padding: 12px 10px;
-      margin-bottom: 18px;
-      border: 1px solid #ced4da;
-      border-radius: 6px;
-      box-sizing: border-box;
-      font-size: 14px;
-    }
+        input[type="email"],
+        input[type="password"] {
+            width: 100%;
+            padding: 12px 10px;
+            margin-bottom: 18px;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
 
-    button {
-      width: 100%;
-      padding: 12px;
-      background-color: #007bff;
-      border: none;
-      border-radius: 6px;
-      color: white;
-      font-weight: bold;
-      font-size: 15px;
-      cursor: pointer;
-      transition: background-color 0.3s ease;
-    }
+        button {
+            width: 100%;
+            padding: 12px;
+            background-color: #007bff;
+            border: none;
+            border-radius: 6px;
+            color: white;
+            font-weight: bold;
+            font-size: 15px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
 
-    button:hover {
-      background-color: #0056b3;
-    }
+        button:hover {
+            background-color: #0056b3;
+        }
 
-    .error-msg {
-      color: red;
-      font-size: 13px;
-      margin-bottom: 15px;
-      text-align: center;
-    }
-  </style>
+        .error-msg {
+            color: red;
+            font-size: 13px;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+    </style>
 </head>
 <body>
-  <div class="login-container">
-    <h2>휴가신청 하러가기</h2>
+    <div class="login-container">
+        <h2>학습지원팀 전용 EHR</h2>
 
-    {% if error %}
-      <p class="error-msg">{{ error }}</p>
-    {% endif %}
+        {% if error %}
+            <p class="error-msg">{{ error }}</p>
+        {% endif %}
 
-    <form method="POST">
-      <label for="email">이메일</label>
-      <input type="email" id="email" name="email" required>
+        <form method="POST">
+            <label for="email">이메일</label>
+            <input type="email" id="email" name="email" required>
 
-      <label for="password">비밀번호</label>
-      <input type="password" id="password" name="password" required>
+            <label for="password">비밀번호</label>
+            <input type="password" id="password" name="password" required>
 
-      <button type="submit">로그인</button>
-    </form>
-  </div>
+            <button type="submit">로그인</button>
+        </form>
+    </div>
+
+    <script>
+        // 이 스크립트 블록이 추가되거나 수정되어야 합니다.
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    // 각 플래시 메시지에 대해 JavaScript alert를 띄웁니다.
+                    alert("{{ message }}");
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </script>
 </body>
 </html>
