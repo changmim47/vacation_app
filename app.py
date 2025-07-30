@@ -187,10 +187,13 @@ def employee_dashboard():
     }
 
     # 1. 오늘 날짜의 출근/퇴근 기록 가져오기 (출근/퇴근 버튼 표시용)
-    # KST (한국 표준시) 시간대를 명시적으로 지정하여 오늘 날짜를 가져옵니다.
     kst_timezone = pytz.timezone('Asia/Seoul')
-    today = datetime.now(kst_timezone).date() # <-- 이 줄을 이렇게 변경해주세요!
-    
+    today = datetime.now(kst_timezone).date()
+
+    # --- 디버깅용 코드 시작 ---
+    print(f"DEBUG: Server's KST today: {today.isoformat()}")
+    # --- 디버깅용 코드 끝 ---
+
     current_check_in_time = None
     current_check_out_time = None
 
@@ -198,7 +201,17 @@ def employee_dashboard():
         "user_id": f"eq.{user_id}",
         "date": f"eq.{today.isoformat()}"
     }
+    
+    # --- 디버깅용 코드 시작 ---
+    print(f"DEBUG: Supabase query params for today's attendance: {today_attendance_params}")
+    # --- 디버깅용 코드 끝 ---
+
     res_today_attendance = requests.get(f"{SUPABASE_URL}/rest/v1/attendances", headers=headers, params=today_attendance_params)
+
+    # --- 디버깅용 코드 시작 ---
+    print(f"DEBUG: Supabase response status for today's attendance: {res_today_attendance.status_code}")
+    print(f"DEBUG: Supabase response JSON for today's attendance: {res_today_attendance.json()}")
+    # --- 디버깅용 코드 끝 ---
 
     if res_today_attendance.status_code == 200 and res_today_attendance.json():
         today_record = res_today_attendance.json()[0]
