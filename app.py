@@ -83,9 +83,12 @@ def attendance():
 
     user_id = user['id']
     record_type = request.form.get('type') # '출근' 또는 '퇴근'
-    now = datetime.now()
-    today_date_str = now.strftime('%Y-%m-%d')
-    current_time_str = now.strftime('%H:%M:%S')
+    
+    # KST (한국 표준시) 시간대를 명시적으로 지정하여 현재 시간과 날짜를 가져옵니다.
+    kst_timezone = pytz.timezone('Asia/Seoul')
+    now_kst = datetime.now(kst_timezone) # <-- 이 줄을 추가합니다.
+    today_date_str = now_kst.strftime('%Y-%m-%d') # <-- now 대신 now_kst 사용
+    current_time_str = now_kst.strftime('%H:%M:%S') # <-- now 대신 now_kst 사용
 
     headers = {
         "apikey": SUPABASE_KEY,
@@ -94,9 +97,10 @@ def attendance():
     }
 
     try:
+        # Supabase에 오늘 날짜의 기록을 조회할 때 KST 기준 날짜 사용
         existing_attendance_params = {
             "user_id": f"eq.{user_id}",
-            "date": f"eq.{today_date_str}"
+            "date": f"eq.{today_date_str}" # <-- KST 기준 날짜 사용
         }
         res_check_exist = requests.get(
             f"{SUPABASE_URL}/rest/v1/attendances",
@@ -108,21 +112,23 @@ def attendance():
 
         if record_type == '출근':
             if current_day_attendance and current_day_attendance.get('check_in_time'):
+                # 오늘 날짜의 기록이 있고 이미 출근 시간이 있다면
                 flash("이미 출근 처리되었습니다.", "info")
             else:
                 if current_day_attendance:
+                    # 오늘 날짜의 기록은 있지만 출근 시간이 없다면 (퇴근만 있거나, 혹은 Supabase 제약 조건에 의해 빈 레코드가 생성된 경우)
                     data_to_update = {'check_in_time': current_time_str}
                     res = requests.patch(
                         f"{SUPABASE_URL}/rest/v1/attendances?id=eq.{current_day_attendance['id']}",
                         headers=headers,
                         json=data_to_update
                     )
-                    # ⭐ 출근 업데이트 성공 조건에 204 추가 ⭐
                     if res.status_code == 200 or res.status_code == 204:
-                        flash(f"출근 처리되었습니다: {now.strftime('%H:%M')}", "success")
+                        flash(f"출근 처리되었습니다: {now_kst.strftime('%I:%M %p')}", "success") # <-- now_kst 사용 및 AM/PM 포맷
                     else:
                         raise Exception(f"출근 기록 업데이트 실패: {res.status_code} - {res.text}")
                 else:
+                    # 오늘 날짜의 기록이 전혀 없다면 새로운 기록 생성
                     data_to_send = {
                         'user_id': user_id,
                         'date': today_date_str,
@@ -135,7 +141,7 @@ def attendance():
                         json=data_to_send
                     )
                     if res.status_code == 201:
-                        flash(f"출근 처리되었습니다: {now.strftime('%H:%M')}", "success")
+                        flash(f"출근 처리되었습니다: {now_kst.strftime('%I:%M %p')}", "success") # <-- now_kst 사용 및 AM/PM 포맷
                     else:
                         raise Exception(f"출근 기록 생성 실패: {res.status_code} - {res.text}")
 
@@ -152,7 +158,6 @@ def attendance():
                         headers=headers,
                         json=data_to_update
                     )
-                    # ⭐ 퇴근 업데이트 성공 조건에 204 추가 ⭐
                     if res.status_code == 200 or res.status_code == 204:
                         flash("오늘 하루도 수고하셨습니다.", "success")
                     else:
@@ -164,10 +169,10 @@ def attendance():
         print(f"Supabase 요청 오류: {e}")
         flash("네트워크 통신 중 오류가 발생했습니다.", "danger")
     except Exception as e:
-        print(f"근태 처리 중 오류가 발생했습니다: {e}") # "danger" 문자열은 print 인수로 부적절하여 제거
+        print(f"근태 처리 중 오류가 발생했습니다: {e}")
         import traceback
         traceback.print_exc()
-        flash("근태 처리 중 알 수 없는 오류가 발생했습니다.", "danger") # 사용자에게 표시될 메시지
+        flash("근태 처리 중 알 수 없는 오류가 발생했습니다.", "danger")
 
     return redirect(url_for('employee_dashboard'))
 
