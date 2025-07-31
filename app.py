@@ -1298,20 +1298,13 @@ def request_vacation():
         return redirect('/employee')
 
 @app.route('/vacation-events')
-def get_vacation_events(): # 함수 이름을 get_vacation_events로 통일합니다.
-    # 이 라우트는 캘린더에 표시될 이벤트 데이터를 제공하므로,
-    # 로그인 여부 체크는 필요에 따라 추가할 수 있지만, 일반적으로 공개 API로 사용됩니다.
-    # if 'user' not in session:
-    #     return redirect('/login')
-
+def get_vacation_events():
     headers = {
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}"
     }
-    
+
     # 모든 휴가 기록 가져오기 (status 무관)
-    # user_id, type, deduct_from_type, status, start_date, end_date, users(name)을 선택
-    # employee_name 컬럼도 함께 가져와서 폴백으로 사용
     res = requests.get(
         f"{SUPABASE_URL}/rest/v1/vacations?select=user_id,type,deduct_from_type,status,start_date,end_date,users(name),employee_name",
         headers=headers
@@ -1322,67 +1315,47 @@ def get_vacation_events(): # 함수 이름을 get_vacation_events로 통일합�
     for v in vacations:
         event_class_names = []
         
-        # 직원 이름 가져오기 (조인된 users.name 우선, 없으면 employee_name 컬럼 사용)
         employee_name = v.get('users', {}).get('name') or v.get('employee_name', '알 수 없음')
 
-        # 캘린더 제목에 표시될 사용자 친화적인 휴가 종류 결정
-        display_type = v.get('type', '휴가') # 기본값은 '휴가'
-        if v.get('type') == '종일': # 'full_day' 대신 '종일'로 변경
-            display_type = '종일'
-        elif v.get('type') == '반차-오전': # 'half_day_am' 대신 '반차-오전'으로 변경
-            display_type = '반차(오전)'
-        elif v.get('type') == '반차-오후': # 'half_day_pm' 대신 '반차-오후'로 변경
-            display_type = '반차(오후)'
-        elif v.get('type') == '반반차-오전': # 'quarter_day_am' 대신 '반반차-오전'으로 변경
-            display_type = '반반차(오전)'
-        elif v.get('type') == '반반차-오후': # 'quarter_day_pm' 대신 '반반차-오후'로 변경
-            display_type = '반반차(오후)'
-        # 기존 '연차', '월차' 타입도 처리 (이전 데이터 호환)
-        elif v.get('type') == '연차':
-            display_type = '연차'
-        elif v.get('type') == '월차':
-            display_type = '월차'
+        # 캘린더 제목과 클래스 결정을 위한 변수
+        display_type = '휴가'
+        vacation_type = v.get('type')
         
-        # 차감 유형에 따른 클래스 추가
-        if v.get('deduct_from_type') == 'yearly':
-            event_class_names.append('vacation-deduct-yearly')
-        elif v.get('deduct_from_type') == 'monthly':
-            event_class_names.append('vacation-deduct-monthly')
+        # 반차, 반반차를 먼저 판단
+        if vacation_type in ['반차-오전', '반차-오후']:
+            event_class_names.append('vacation-type-half-day')
+            display_type = '반차'
+        elif vacation_type in ['반반차-오전', '반반차-오후']:
+            event_class_names.append('vacation-type-quarter-day')
+            display_type = '반반차'
+        else:
+            # 종일 휴가를 판단
+            deduct_type = v.get('deduct_from_type')
+            if deduct_type == 'yearly':
+                event_class_names.append('vacation-type-full-day')
+                display_type = '연차'
+            elif deduct_type == 'monthly':
+                event_class_names.append('vacation-type-full-day')
+                display_type = '월차'
+            else:
+                event_class_names.append('vacation-type-other')
+                display_type = '기타'
 
-        # 휴가 종류(세부)에 따른 클래스 추가 (deduct_from_type과 별개로 색상 부여 가능)
-        # v.get('type') 값은 '종일', '반차-오전', '반차-오후', '반반차-오전', '반반차-오후' 등으로 저장됩니다.
-        if v.get('type') == '종일': # 'full_day' 대신 '종일'로 변경
-            # 종일 휴가는 deduct_from_type의 색상을 따르므로 별도 type 클래스 추가 안 함
-            # 만약 종일 휴가에 별도의 배경색을 원한다면, 여기에 클래스를 추가하고 CSS에 정의해야 합니다.
-            # event_class_names.append('vacation-type-full-day') 
-            pass
-        elif v.get('type') == '반차-오전': # 'half_day_am' 대신 '반차-오전'으로 변경
-            event_class_names.append('vacation-type-half-day-am')
-        elif v.get('type') == '반차-오후': # 'half_day_pm' 대신 '반차-오후'로 변경
-            event_class_names.append('vacation-type-half-day-pm')
-        elif v.get('type') == '반반차-오전': # 'quarter_day_am' 대신 '반반차-오전'으로 변경
-            event_class_names.append('vacation-type-quarter-day-am')
-        elif v.get('type') == '반반차-오후': # 'quarter_day_pm' 대신 '반반차-오후'로 변경
-            event_class_names.append('vacation-type-quarter-day-pm')
-        
         # 휴가 상태에 따른 클래스 추가 (승인/대기/반려)
         event_status = v.get('status')
         if event_status:
             event_class_names.append(f"vacation-status-{event_status}")
 
-        # FullCalendar의 'end' 날짜는 종료일 다음 날로 설정해야 범위가 올바르게 표시됩니다.
+        # FullCalendar의 'end' 날짜는 종료일 다음 날로 설정
         end_date_inclusive = (datetime.strptime(v['end_date'], "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
 
         events.append({
-            'title': f"{employee_name} ({display_type})", # 캘린더 제목에 직원 이름과 휴가 종류 표시
+            'title': f"{employee_name} ({display_type})",
             'start': v['start_date'],
             'end': end_date_inclusive,
-            'classNames': event_class_names, # 생성된 클래스 리스트 할당
-            'allDay': True # 종일 이벤트로 표시
+            'classNames': event_class_names,
+            'allDay': True
         })
-        # --- 디버깅용 출력 ---
-        print(f"DEBUG_CALENDAR_EVENT: Title: {employee_name} ({display_type}), Start: {v['start_date']}, End: {v['end_date']}, ClassNames: {event_class_names}, Status: {event_status}, DeductType: {v.get('deduct_from_type')}, Type: {v.get('type')}")
-        # --- 디버깅용 출력 끝 ---
     return jsonify(events)
 
 # ✅ 앱 실행
