@@ -455,12 +455,25 @@
             background-color: #6c757d; /* Gray */
         }
 
+        .vacationhead {
+            font-size: 14px;
+            font-weight: bold;
+            color: #6c757d;
+        }
+
+        .welcome {
+            font-size: 15px;
+            font-weight: bold;
+            color: #2e8fe4;
+        }
+
     </style>
 </head>
 <body>
     <div class="container">
         <div class="sidebar">
             <div class="user-box">
+                <div class="welcome"><a>안녕하세요!</a></div>
                 <div class="name">{{ user.name }} 사원</div>
                   <form id="attendanceForm" method="POST" action="/attendance"> {# 폼에 id 추가 #}
                       <button type="submit" name="type" value="출근" class="btn-time {% if current_check_in_time %}recorded{% endif %}"
@@ -532,6 +545,7 @@
 
                 <div id="vacation-form-section" class="dynamic-section">
                     <h4>📅 휴가 신청</h4>
+                    <div class="vacationhead"><a>* 입사일 기준 1년 미만은 월차로 선택</a></div>
                     <form method="POST" action="/request-vacation" class="vacation-form">
                         <div class="form-group">
                             <label>시작일</label>
