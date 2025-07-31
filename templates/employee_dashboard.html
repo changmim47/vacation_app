@@ -260,7 +260,6 @@
         background-color: #8766e2; /* 밝은 빨간색 */
     }
 
-
         .tab-buttons {
             display: flex;
             gap: 6px;
@@ -370,6 +369,7 @@
         .form-group {
             display: flex;
             flex-direction: column;
+            width: 300px;
         }
 
         .form-group label {
@@ -488,6 +488,72 @@
             color: #2e8fe4;
         }
 
+        .date-group {
+            margin-bottom: 15px; /* 하단 여백 추가 */
+        }
+
+        .date-group label {
+            display: block; /* 라벨을 블록 레벨 요소로 만들어 다음 줄로 이동 */
+            margin-bottom: 5px; /* 라벨 하단 여백 */
+            font-weight: bold; /* 라벨 텍스트 굵게 */
+        }
+
+        .date-inputs {
+            display: flex; /* 자식 요소(input, span)를 한 줄에 나란히 배치 */
+            align-items: center; /* 세로 중앙 정렬 */
+            gap: 10px; /* 요소들 간의 간격 설정 */
+        }
+
+        .date-inputs input[type="date"] {
+            width: 150px; /* 날짜 입력 필드 너비 조정 */
+            margin: 0; /* 기본 마진 제거 */
+        }
+
+        .date-separator {
+            font-weight: bold;
+            color: #495057;
+        }
+
+        .modal {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+}
+.modal-content {
+    background: #fff;
+    padding: 20px;
+    border-radius: 12px;
+    width: 600px;
+    max-width: 90%;
+    position: relative;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+.close-button {
+    position: absolute;
+    right: 14px; top: 10px;
+    font-size: 20px;
+    cursor: pointer;
+}
+.modal-title {
+    font-size: 18px;
+    color: #007bff;
+    margin-bottom: 16px;
+}
+.modal-body .vacation-item {
+    background: #f8f9fa;
+    border-left: 4px solid #007bff;
+    border-radius: 4px;
+    padding: 10px;
+    margin-bottom: 8px;
+    font-size: 14px;
+}
+
+
     </style>
 </head>
 <body>
@@ -547,7 +613,10 @@
                 </div>
 
                 <div class="card">
-                    <h4>📌 신청 내역</h4>
+                    <h4 style="display: flex; justify-content: space-between; align-items: center;">
+                    📌 신청 내역
+                    <button onclick="showAllVacationsModal()" style="border: none; background: none; font-size: 18px; cursor: pointer;">&gt;</button>
+                    </h4>
                     <div class="tab-buttons">
                         <button class="tab-btn" data-status="대기중" id="default-tab">대기중 ({{ pending_count }})</button>
                         <button class="tab-btn" data-status="승인됨">승인됨 ({{ approved_count }})</button>
@@ -555,6 +624,14 @@
                     </div>
                     <div id="vacation-list"></div>
                 </div>
+            </div>
+            <!-- 전체 휴가 신청 내역 팝업 -->
+            <div id="all-vacations-modal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <span class="close-button">&times;</span>
+                <h4 class="modal-title">전체 휴가 신청 내역</h4>
+                <div class="modal-body" id="all-vacation-list" style="max-height: 500px; overflow-y: auto;"></div>
+            </div>
             </div>
 
             {# 이 영역만 동적으로 전환됩니다 #}
@@ -568,13 +645,13 @@
                     <h4>📅 휴가 신청</h4>
                     <div class="vacationhead"><a>* 입사일 기준 1년 미만은 월차로 선택</a></div>
                     <form method="POST" action="/request-vacation" class="vacation-form">
-                        <div class="form-group">
-                            <label>시작일</label>
-                            <input type="date" name="start_date" id="start_date_input" required>
-                        </div>
-                        <div class="form-group">
-                            <label>종료일</label>
-                            <input type="date" name="end_date" id="end_date_input" required>
+                        <div class="form-group date-group">
+                            <label>휴가 기간</label>
+                            <div class="date-inputs">
+                                <input type="date" id="start_date" name="start_date" required>
+                                <span class="date-separator">~</span>
+                                <input type="date" id="end_date" name="end_date" required>
+                            </div>
                         </div>
 
                         <div class="form-group">
@@ -666,193 +743,230 @@
         </div>
     </div>
 
-    <script>
-        // FullCalendar 전역 변수로 선언
-        let calendar;
+<script>
+    // FullCalendar 전역 변수로 선언
+    let calendar;
 
-        // 섹션 전환 함수
-        function showSection(sectionId, clickedLink) {
-            // 모든 동적 섹션 숨기기
-            document.querySelectorAll('.dynamic-section').forEach(section => {
-                section.style.display = 'none';
-                section.classList.remove('active');
-            });
+    // 섹션 전환 함수
+    function showSection(sectionId, clickedLink) {
+        // 모든 동적 섹션 숨기기
+        document.querySelectorAll('.dynamic-section').forEach(section => {
+            section.style.display = 'none';
+            section.classList.remove('active');
+        });
 
-            // 사이드바 메뉴 활성/비활성 처리
-            document.querySelectorAll('.menu a').forEach(link => {
-                link.classList.remove('active');
-            });
-            if (clickedLink) {
-                clickedLink.classList.add('active');
-            }
-
-            // 선택된 섹션만 보이기
-            const targetSection = document.getElementById(sectionId + '-section');
-            if (targetSection) {
-                targetSection.style.display = 'block';
-                targetSection.classList.add('active');
-
-                // 캘린더 섹션이 활성화될 때 FullCalendar 업데이트
-                if (sectionId === 'calendar' && calendar) {
-                    calendar.render(); // 캘린더를 다시 렌더링하여 크기 및 내용 업데이트
-                    calendar.updateSize();
-                }
-            }
+        // 사이드바 메뉴 활성/비활성 처리
+        document.querySelectorAll('.menu a').forEach(link => {
+            link.classList.remove('active');
+        });
+        if (clickedLink) {
+            clickedLink.classList.add('active');
         }
 
-    // confirmCheckOut 함수를 DOMContentLoaded 이벤트 리스너 밖으로 냄 (전역 함수로 만들기)
+        // 선택된 섹션만 보이기
+        const targetSection = document.getElementById(sectionId + '-section');
+        if (targetSection) {
+            targetSection.style.display = 'block';
+            targetSection.classList.add('active');
+
+            // 캘린더 섹션이 활성화될 때 FullCalendar 업데이트
+            if (sectionId === 'calendar' && calendar) {
+                calendar.render(); // 캘린더를 다시 렌더링하여 크기 및 내용 업데이트
+                calendar.updateSize();
+            }
+        }
+    }
+
+    // 전역 함수로 이동: 퇴근 확인
     function confirmCheckOut() {
         return confirm("퇴근 하시겠습니까?");
     }
 
-        document.addEventListener('DOMContentLoaded', function () {
-            // ===========================================
-            // FullCalendar 초기화
-            // ===========================================
-            var calendarEl = document.getElementById('calendar');
-            if (calendarEl) { // 캘린더 요소가 있는지 확인
-                calendar = new FullCalendar.Calendar(calendarEl, {
-                    initialView: 'dayGridMonth',
-                    locale: 'ko',
-                    height: 900,
-                    headerToolbar: {
-                        left: 'today prev,next',
-                        center: 'title',
-                        right: 'dayGridMonth,timeGridWeek,listWeek'
-                    },
-                    events: function(fetchInfo, successCallback, failureCallback) {
-                        const year = fetchInfo.start.getFullYear();
-                        const holidayUrl = `/static/holidays/${year}holidays.json`;
+    // 전역 함수로 이동: 전체 휴가 내역 모달 열기
+    function showAllVacationsModal() {
+        const modal = document.getElementById('all-vacations-modal');
+        const listContainer = document.getElementById('all-vacation-list');
+        modal.style.display = 'flex';
 
-                        Promise.all([
-                            fetch('/vacation-events').then(res => res.json()),
-                            fetch(holidayUrl).then(res => res.json()).catch(() => [])
-                        ])
-                        .then(([vacationEvents, holidayEvents]) => {
-                            successCallback([...vacationEvents, ...holidayEvents]);
-                        })
-                        .catch(error => {
-                            console.error('이벤트 로딩 실패:', error);
-                            failureCallback(error);
-                        });
-                    },
-                    dayCellDidMount: function(info) {
-                        const day = info.date.getDay();
-                        const numberEl = info.el.querySelector('.fc-daygrid-day-number');
-                        if (numberEl) {
-                            if (day === 0) numberEl.style.color = 'red';
-                            else if (day === 6) numberEl.style.color = 'blue';
-                        }
+        // 모든 휴가 내역 표시를 위한 변수 재선언 (스코프 문제 방지)
+        const allVacations = {{ vacations | tojson }};
+
+        listContainer.innerHTML = allVacations.length === 0
+            ? '<p style="font-size:14px; color:gray;">휴가 내역이 없습니다.</p>'
+            : allVacations.map(v => `
+                <div class="vacation-item">
+                    <span class="tag">${v.type === 'full_day' ? (v.deduct_from_type === 'yearly' ? '연차' : '월차') : v.type === 'half_day_am' ? '반차(오전)' : v.type === 'half_day_pm' ? '반차(오후)' : v.type === 'quarter_day_am' ? '반반차(오전)' : v.type === 'quarter_day_pm' ? '반반차(오후)' : v.type}</span>
+                    <span class="name">${v.name}</span><br>
+                    <span class="date">${v.start_date} ~ ${v.end_date} (${v.used_days}일)</span>
+                    <span class="tag" style="background-color: ${v.status === 'approved' ? '#d4edda' : v.status === 'pending' ? '#fff3cd' : '#f8d7da'}; color: ${v.status === 'approved' ? '#155724' : v.status === 'pending' ? '#856404' : '#721c24'};">${v.status_kor}</span>
+                </div>
+            `).join('');
+    }
+
+    // DOMContentLoaded 이벤트 리스너
+    document.addEventListener('DOMContentLoaded', function () {
+        // ===========================================
+        // FullCalendar 초기화
+        // ===========================================
+        var calendarEl = document.getElementById('calendar');
+        if (calendarEl) {
+            calendar = new FullCalendar.Calendar(calendarEl, {
+                initialView: 'dayGridMonth',
+                locale: 'ko',
+                height: 900,
+                headerToolbar: {
+                    left: 'today prev,next',
+                    center: 'title',
+                    right: 'dayGridMonth,timeGridWeek,listWeek'
+                },
+                events: function(fetchInfo, successCallback, failureCallback) {
+                    const year = fetchInfo.start.getFullYear();
+                    const holidayUrl = `/static/holidays/${year}holidays.json`;
+
+                    Promise.all([
+                        fetch('/vacation-events').then(res => res.json()),
+                        fetch(holidayUrl).then(res => res.json()).catch(() => [])
+                    ])
+                    .then(([vacationEvents, holidayEvents]) => {
+                        successCallback([...vacationEvents, ...holidayEvents]);
+                    })
+                    .catch(error => {
+                        console.error('이벤트 로딩 실패:', error);
+                        failureCallback(error);
+                    });
+                },
+                dayCellDidMount: function(info) {
+                    const day = info.date.getDay();
+                    const numberEl = info.el.querySelector('.fc-daygrid-day-number');
+                    if (numberEl) {
+                        if (day === 0) numberEl.style.color = 'red';
+                        else if (day === 6) numberEl.style.color = 'blue';
                     }
-                });
-                // 캘린더는 showSection에서 초기 렌더링 및 업데이트를 처리합니다.
-            }
-
-            // ===========================================
-            // 휴가 신청 폼 날짜 입력 필드 로직
-            // ===========================================
-            // 실제 HTML의 id에 맞춰 변수명 조정
-            const baseLeaveTypeSelect = document.getElementById('base_leave_type');
-            const leaveGranularityTypeSelect = document.getElementById('leave_granularity_type');
-            const startDateInput = document.getElementById('start_date_input');
-            const endDateInput = document.getElementById('end_date_input');
-
-            function updateDateInputs() {
-                const granularity = leaveGranularityTypeSelect.value;
-                if (granularity.startsWith('half_day') || granularity.startsWith('quarter_day')) {
-                    if (startDateInput.value && startDateInput.value !== endDateInput.value) {
-                        endDateInput.value = startDateInput.value;
-                    }
-                    endDateInput.readOnly = true;
-                } else {
-                    endDateInput.readOnly = false;
                 }
-            }
-            // null 체크 추가 (요소가 없을 수도 있으므로)
-            if (baseLeaveTypeSelect) baseLeaveTypeSelect.addEventListener('change', updateDateInputs);
-            if (leaveGranularityTypeSelect) leaveGranularityTypeSelect.addEventListener('change', updateDateInputs);
-            if (startDateInput) startDateInput.addEventListener('change', updateDateInputs); 
-            
-            // 페이지 로드 시 초기 상태 설정 (필요한 경우만)
-            if (leaveGranularityTypeSelect && startDateInput && endDateInput) {
-                updateDateInputs();
-            }
+            });
+        }
 
+        // ===========================================
+        // 휴가 신청 폼 날짜 입력 필드 로직
+        // ===========================================
+        const baseLeaveTypeSelect = document.getElementById('base_leave_type');
+        const leaveGranularityTypeSelect = document.getElementById('leave_granularity_type');
+        const startDateInput = document.getElementById('start_date');
+        const endDateInput = document.getElementById('end_date');
 
-            // ===========================================
-            // 휴가 목록 필터링 로직
-            // ===========================================
-            const allVacations = {{ vacations | tojson }};
-            // 휴가 내역을 'vacation-list' div 내에 직접 렌더링하는 기존 방식 유지
-            const vacationList = document.getElementById('vacation-list');
-            let currentStatus = null; // 초기 상태를 null로 시작하여 첫 클릭 시 무조건 렌더링되도록
-
-            function renderVacations(status) {
-                if (currentStatus === status) {
-                    vacationList.innerHTML = '';
-                    currentStatus = null;
-                    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-                    return;
+        function updateDateInputs() {
+            const granularity = leaveGranularityTypeSelect.value;
+            if (granularity.startsWith('half_day') || granularity.startsWith('quarter_day')) {
+                if (startDateInput.value && startDateInput.value !== endDateInput.value) {
+                    endDateInput.value = startDateInput.value;
                 }
+                endDateInput.readOnly = true;
+            } else {
+                endDateInput.readOnly = false;
+            }
+        }
 
-                currentStatus = status;
+        if (baseLeaveTypeSelect) baseLeaveTypeSelect.addEventListener('change', updateDateInputs);
+        if (leaveGranularityTypeSelect) leaveGranularityTypeSelect.addEventListener('change', updateDateInputs);
+        if (startDateInput) startDateInput.addEventListener('change', updateDateInputs);
+
+        if (leaveGranularityTypeSelect && startDateInput && endDateInput) {
+            updateDateInputs();
+        }
+
+        // ===========================================
+        // 휴가 목록 필터링 로직
+        // ===========================================
+        const allVacations = {{ vacations | tojson }};
+        const vacationList = document.getElementById('vacation-list');
+        let currentStatus = null;
+
+        function renderVacations(status) {
+            if (currentStatus === status) {
+                vacationList.innerHTML = '';
+                currentStatus = null;
                 document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-                const activeBtn = document.querySelector(`.tab-btn[data-status="${status}"]`);
-                if (activeBtn) activeBtn.classList.add('active');
-
-                let filtered = status === 'all'
-                    ? allVacations
-                    : allVacations.filter(v => v.status_kor === status);
-
-                vacationList.innerHTML = filtered.length === 0
-                    ? '<p style="font-size:14px; color:gray;">휴가 내역이 없습니다.</p>'
-                    : filtered.map(v => `
-                        <div class="vacation-item">
-                            <span class="tag">${v.type === 'full_day' ? (v.deduct_from_type === 'yearly' ? '연차' : '월차') : v.type === 'half_day_am' ? '반차(오전)' : v.type === 'half_day_pm' ? '반차(오후)' : v.type === 'quarter_day_am' ? '반반차(오전)' : v.type === 'quarter_day_pm' ? '반반차(오후)' : v.type}</span>
-                            <span class="name">${v.name}</span><br>
-                            <span class="date">${v.start_date} ~ ${v.end_date} (${v.used_days}일)</span>
-                            <span class="tag" style="background-color: ${v.status === 'approved' ? '#d4edda' : v.status === 'pending' ? '#fff3cd' : '#f8d7da'}; color: ${v.status === 'approved' ? '#155724' : v.status === 'pending' ? '#856404' : '#721c24'};">${v.status_kor}</span>
-                        </div>
-                    `).join('');
+                return;
             }
 
-            document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    renderVacations(btn.dataset.status);
-                });
+            currentStatus = status;
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            const activeBtn = document.querySelector(`.tab-btn[data-status="${status}"]`);
+            if (activeBtn) activeBtn.classList.add('active');
+
+            const today = new Date().toISOString().slice(0, 10);
+
+            const filtered = allVacations.filter(v => {
+                if (v.status_kor !== status) return false;
+
+                if (v.status === 'approved') {
+                    return v.start_date > today;
+                }
+
+                if (v.status === 'rejected') {
+                    const baseDateStr = v.rejected_at || v.created_at;
+                    if (!baseDateStr) return true;
+
+                    const baseDate = new Date(baseDateStr);
+                    const cutoff = new Date(baseDate);
+                    cutoff.setDate(cutoff.getDate() + 1);
+
+                    return cutoff.toISOString().slice(0, 10) >= today;
+                }
+
+                return true;
             });
 
-            // 초기 로드 시 '대기중' 탭을 활성화하고 렌더링
-            renderVacations('대기중');
+            vacationList.innerHTML = filtered.length === 0
+                ? '<p style="font-size:14px; color:gray;">휴가 내역이 없습니다.</p>'
+                : filtered.map(v => `
+                    <div class="vacation-item">
+                        <span class="tag">${v.type === 'full_day' ? (v.deduct_from_type === 'yearly' ? '연차' : '월차') : v.type === 'half_day_am' ? '반차(오전)' : v.type === 'half_day_pm' ? '반차(오후)' : v.type === 'quarter_day_am' ? '반반차(오전)' : v.type === 'quarter_day_pm' ? '반반차(오후)' : v.type}</span>
+                        <span class="name">${v.name}</span><br>
+                        <span class="date">${v.start_date} ~ ${v.end_date} (${v.used_days}일)</span>
+                        <span class="tag" style="background-color: ${v.status === 'approved' ? '#d4edda' : v.status === 'pending' ? '#fff3cd' : '#f8d7da'}; color: ${v.status === 'approved' ? '#155724' : v.status === 'pending' ? '#856404' : '#721c24'};">${v.status_kor}</span>
+                    </div>
+                `).join('');
+        }
 
-
-            // ===========================================
-            // 플래시 메시지 (이 부분은 그대로 유지)
-            // ===========================================
-            {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    {% for category, message in messages %}
-                        alert("{{ message }}");
-                    {% endfor %}
-                {% endif %}
-            {% endwith %}
-
-            function setAttendanceType(type) {
-                // 이 함수는 현재 퇴근 버튼 로직에 직접 사용되지 않습니다.
-                // 퇴근 버튼의 value는 HTML에서 직접 '퇴근'으로 설정되어 있습니다.
-            }
-
-            function confirmCheckOut() {
-                return confirm("퇴근 하시겠습니까?");
-            }
-
-            // 페이지 로드 시 기본 섹션 활성화 (대시보드: 연차현황, 신청내역, 캘린더)
-            const initialDashboardLink = document.querySelector('.menu a[onclick*=\'calendar\']'); /* 'calendar' 섹션을 기본으로 활성화 */
-            if (initialDashboardLink) {
-                showSection('calendar', initialDashboardLink);
-            }
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                renderVacations(btn.dataset.status);
+            });
         });
-    </script>
+
+        // 초기 로드 시 '대기중' 탭을 활성화하고 렌더링
+        renderVacations('대기중');
+
+        // ===========================================
+        // 플래시 메시지
+        // ===========================================
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    alert("{{ message }}");
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        // 페이지 로드 시 기본 섹션 활성화
+        const initialDashboardLink = document.querySelector('.menu a[onclick*=\'calendar\']');
+        if (initialDashboardLink) {
+            showSection('calendar', initialDashboardLink);
+        }
+    }); // End of DOMContentLoaded
+
+    // 전역 스코프에 모달 닫기 이벤트 리스너 추가
+    const modal = document.getElementById('all-vacations-modal');
+    const closeBtn = document.querySelector('#all-vacations-modal .close-button');
+
+    if (modal && closeBtn) {
+        closeBtn.addEventListener('click', () => modal.style.display = 'none');
+        window.addEventListener('click', (e) => {
+            if (e.target === modal) modal.style.display = 'none';
+        });
+    }
+</script>
 
 </body>
 </html>
