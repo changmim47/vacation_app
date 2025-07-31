@@ -82,6 +82,7 @@ def attendance():
         return redirect(url_for('login'))
 
     user_id = user['id']
+    employee_name = user.get('name') # 세션에서 직원 이름 가져오기
     record_type = request.form.get('type') # '출근' 또는 '퇴근'
     
     # KST (한국 표준시) 시간대를 명시적으로 지정하여 현재 시간과 날짜를 가져옵니다.
@@ -117,7 +118,10 @@ def attendance():
             else:
                 if current_day_attendance:
                     # 오늘 날짜의 기록은 있지만 출근 시간이 없다면 (퇴근만 있거나, 혹은 Supabase 제약 조건에 의해 빈 레코드가 생성된 경우)
-                    data_to_update = {'check_in_time': current_time_str}
+                    data_to_update = {
+                        'check_in_time': current_time_str,
+                        'employee_name': employee_name # <-- 여기에 직원 이름 추가
+                        }
                     res = requests.patch(
                         f"{SUPABASE_URL}/rest/v1/attendances?id=eq.{current_day_attendance['id']}",
                         headers=headers,
@@ -133,7 +137,8 @@ def attendance():
                         'user_id': user_id,
                         'date': today_date_str,
                         'check_in_time': current_time_str,
-                        'check_out_time': None
+                        'check_out_time': None,
+                        'employee_name': employee_name
                     }
                     res = requests.post(
                         f"{SUPABASE_URL}/rest/v1/attendances",
@@ -1087,23 +1092,42 @@ from datetime import datetime, timedelta
 
 @app.route('/request-vacation', methods=['POST'])
 def request_vacation():
-    if 'user' not in session:
+    # user = None  # 이 줄을 제거합니다.
+    
+    user = session.get('user') # 세션에서 사용자 정보를 가져옵니다.
+    
+    # 1. user 객체가 None인지 확인하고, None이면 바로 로그인 페이지로 리다이렉트
+    if user is None: # 명시적으로 'is None'을 사용합니다.
         flash("⛔ 사용자 정보를 불러오지 못했습니다. 다시 로그인해 주세요.", "danger")
         return redirect('/login')
 
-    user_id = session['user']['id']
-    start_date_str = request.form['start_date']
-    end_date_str = request.form['end_date']
+    # 2. user 객체가 딕셔너리 타입인지 확인 (세션 데이터의 유효성 검사)
+    if not isinstance(user, dict):
+        print(f"ERROR: User object in session is not a dictionary: {user}, type: {type(user)}")
+        flash("세션 사용자 정보가 올바르지 않습니다. 다시 로그인해주세요.", "danger")
+        return redirect('/login')
 
-    # New: 폼에서 'base_leave_type'과 'leave_granularity_type' 값을 가져옵니다.
-    base_leave_type_str = request.form['base_leave_type'] # 예: 'yearly', 'monthly'
-    leave_granularity_type = request.form['leave_granularity_type'] # 예: 'full_day', 'half_day_am'
+    # 3. user_id와 employee_name을 안전하게 가져옵니다.
+    # .get() 메서드를 사용하여 키가 없어도 오류가 아닌 None을 반환하도록 합니다.
+    user_id = user.get('id')
+    employee_name = user.get('name')
 
-    print(f"DEBUG: base_leave_type: {base_leave_type_str}, granularity_type: {leave_granularity_type}")
+    # 4. user_id 또는 employee_name이 None인지 다시 확인하고, 불완전하면 리다이렉트
+    if user_id is None or employee_name is None:
+        print(f"ERROR: Missing user_id ({user_id}) or employee_name ({employee_name}) in session user data: {user}")
+        flash("사용자 정보가 불완전합니다. 다시 로그인해주세요.", "danger")
+        return redirect('/login')
+
+    start_date_str = request.form.get('start_date')
+    end_date_str = request.form.get('end_date')
+    leave_type = request.form.get('type') # full_day, half_day_am 등
+    deduct_from_type = request.form.get('deduct_from_type') # yearly, monthly
+
+    print(f"DEBUG: base_leave_type: {deduct_from_type}, granularity_type: {leave_type}") # 변수명 통일 (base_leave_type_str -> deduct_from_type)
 
     try:
-        start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
-        end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+        start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+        end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
     except ValueError:
         flash("❌ 날짜 형식이 잘못되었습니다.", "danger")
         return redirect('/employee')
@@ -1136,41 +1160,41 @@ def request_vacation():
     type_to_save_in_supabase = "" # Supabase 'type' 컬럼에 저장될 값 (예: "종일", "반차-오전")
     deduct_from_type_to_save = "" # Supabase 'deduct_from_type' 컬럼에 저장될 값 (예: "yearly", "monthly")
 
-    # base_leave_type에 따라 deduct_from_type_to_save를 설정
-    if base_leave_type_str == 'yearly':
+    # deduct_from_type에 따라 deduct_from_type_to_save를 설정
+    if deduct_from_type == 'yearly': # base_leave_type_str 대신 deduct_from_type 사용
         deduct_from_type_to_save = "yearly"
-    elif base_leave_type_str == 'monthly':
+    elif deduct_from_type == 'monthly': # base_leave_type_str 대신 deduct_from_type 사용
         deduct_from_type_to_save = "monthly"
     else:
         flash("❌ 유효한 휴가 유형(연차/월차)을 선택해 주세요.", "danger")
         return redirect('/employee')
 
     # leave_granularity_type에 따라 used_days와 type_to_save_in_supabase를 설정
-    if leave_granularity_type == 'full_day':
+    if leave_type == 'full_day': # leave_granularity_type 대신 leave_type 사용
         used_days = (end_date - start_date).days + 1
         type_to_save_in_supabase = "종일" # 또는 "연차" / "월차"로 저장해도 됩니다.
         if used_days <= 0:
             flash("❌ 종일 휴가는 최소 하루 이상이어야 합니다.", "danger")
             return redirect('/employee')
-    elif leave_granularity_type == 'half_day_am':
+    elif leave_type == 'half_day_am': # leave_granularity_type 대신 leave_type 사용
         used_days = 0.5
         type_to_save_in_supabase = "반차-오전"
         if start_date != end_date:
             flash("❌ 반차는 하루만 선택할 수 있습니다.", "danger")
             return redirect('/employee')
-    elif leave_granularity_type == 'half_day_pm':
+    elif leave_type == 'half_day_pm': # leave_granularity_type 대신 leave_type 사용
         used_days = 0.5
         type_to_save_in_supabase = "반차-오후"
         if start_date != end_date:
             flash("❌ 반차는 하루만 선택할 수 있습니다.", "danger")
             return redirect('/employee')
-    elif leave_granularity_type == 'quarter_day_am':
+    elif leave_type == 'quarter_day_am': # leave_granularity_type 대신 leave_type 사용
         used_days = 0.25
         type_to_save_in_supabase = "반반차-오전"
         if start_date != end_date:
             flash("❌ 반반차는 하루만 선택할 수 있습니다.", "danger")
             return redirect('/employee')
-    elif leave_granularity_type == 'quarter_day_pm':
+    elif leave_type == 'quarter_day_pm': # leave_granularity_type 대신 leave_type 사용
         used_days = 0.25
         type_to_save_in_supabase = "반반차-오후"
         if start_date != end_date:
@@ -1186,11 +1210,10 @@ def request_vacation():
         flash("❌ 사용자 정보를 불러올 수 없습니다.", "danger")
         return redirect('/employee')
 
-    user = res_user.json()[0]
-    auto_yearly_leave, auto_monthly_leave = calculate_leave(user.get("join_date"))
+    user_data_from_db = res_user.json()[0] # user 변수명 충돌 방지를 위해 변경
+    auto_yearly_leave, auto_monthly_leave = calculate_leave(user_data_from_db.get("join_date"))
 
     # 현재 사용된 휴가 계산 (Supabase 기록에서 deduct_from_type을 활용)
-    # 기존 데이터와의 호환성을 위해 v.get("deduct_from_type")을 사용합니다.
     res_vac = requests.get(
         f"{SUPABASE_URL}/rest/v1/vacations?user_id=eq.{user_id}&status=eq.approved",
         headers=headers
@@ -1206,8 +1229,6 @@ def request_vacation():
         except (ValueError, TypeError):
             val = 0.0
         
-        # 'deduct_from_type' 컬럼의 값을 기준으로 차감합니다.
-        # 기존 데이터에 'deduct_from_type'이 없는 경우를 위한 폴백 로직이 필요합니다.
         deduction_source = v.get("deduct_from_type") 
 
         if deduction_source == "yearly":
@@ -1217,7 +1238,6 @@ def request_vacation():
         else:
             # 이 부분은 'deduct_from_type'이 없는 (레거시) 데이터 처리 방식입니다.
             # 당신의 과거 데이터가 어떻게 휴가 유형을 저장했는지에 따라 이 로직을 조정해야 합니다.
-            # 예: 만약 'type'이 "연차"이거나 "반차", "반반차"였다면 연차로 간주
             if v.get("type") == "연차" or v.get("type", "").startswith(("반차", "반반차")): 
                 current_used_yearly += val
             elif v.get("type") == "월차":
@@ -1242,6 +1262,7 @@ def request_vacation():
     headers["Content-Type"] = "application/json"
     data = {
         "user_id": user_id,
+        'employee_name': employee_name,
         "type": type_to_save_in_supabase, # 이제는 세부 종류 (예: "종일", "반차-오전")가 저장됩니다.
         "start_date": start_date_str,
         "end_date": end_date_str,
