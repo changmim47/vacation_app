@@ -249,59 +249,76 @@
     margin-bottom: 10px;
     }
 
-/* FullCalendar 툴바 정렬 및 스타일 */
-.fc-toolbar.fc-header-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
+    /* FullCalendar 툴바 정렬 및 스타일 */
+    .fc-toolbar.fc-header-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
 
-/* 타이틀 중앙 정렬 스타일 */
-.fc-toolbar-title {
-  font-size: 18px;
-  font-weight: bold;
-  color: #212529;
-}
+    /* 타이틀 중앙 정렬 스타일 */
+    .fc-toolbar-title {
+      font-size: 18px;
+      font-weight: bold;
+      color: #212529;
+    }
 
-/* 공통 버튼 스타일 */
-.fc .fc-button {
-  border-radius: 20px;
-  font-size: 13px;
-  font-weight: 600;
-  padding: 5px 14px;
-  border: 1px solid #ced4da;
-  background-color: #fff;
-  color: #343a40;
-  transition: background-color 0.2s ease, color 0.2s ease;
-}
+    /* 공통 버튼 스타일 */
+    .fc .fc-button {
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 5px 14px;
+      border: 1px solid #ced4da;
+      background-color: #fff;
+      color: #343a40;
+      transition: background-color 0.2s ease, color 0.2s ease;
+    }
 
-/* today 버튼 */
-.fc .fc-button.fc-today-button {
-  background-color: #6c757d;
-  color: #fff;
-  border: none;
-}
+    /* today 버튼 */
+    .fc .fc-button.fc-today-button {
+      background-color: #6c757d;
+      color: #fff;
+      border: none;
+    }
 
-/* 화살표 버튼(prev/next) */
-.fc .fc-button-group .fc-button {
-  background-color: #fff;
-  border-color: #ced4da;
-}
+    /* 화살표 버튼(prev/next) */
+    .fc .fc-button-group .fc-button {
+      background-color: #fff;
+      border-color: #ced4da;
+    }
 
-/* 뷰 선택 버튼 (month/week/list) */
-.fc .fc-button-group .fc-button.fc-button-active {
-  background-color: #007bff;
-  color: white;
-  border-color: #007bff;
-  box-shadow: inset 0 -2px 0 rgba(0,0,0,0.1);
-}
+    /* 뷰 선택 버튼 (month/week/list) */
+    .fc .fc-button-group .fc-button.fc-button-active {
+      background-color: #007bff;
+      color: white;
+      border-color: #007bff;
+      box-shadow: inset 0 -2px 0 rgba(0,0,0,0.1);
+    }
 
-.fc .fc-button-group .fc-button:hover:not(.fc-button-active),
-.fc .fc-button.fc-today-button:hover {
-  background-color: #e9ecef;
-  color: #000;
-}
+    .fc .fc-button-group .fc-button:hover:not(.fc-button-active),
+    .fc .fc-button.fc-today-button:hover {
+      background-color: #e9ecef;
+      color: #000;
+    }
+
+    /* --- 휴가 종류별 색상 --- */
+    /* 연차/월차 (종일 휴가) */
+    .vacation-type-full-day {
+        background-color: #e24949; /* 밝은 파란색 */
+    }
+
+    /* 반차 (오전/오후) */
+    .vacation-type-half-day {
+        background-color: #f1c40f; /* 밝은 노란색 */
+    }
+
+    /* 반반차 (오전/오후) */
+    .vacation-type-quarter-day {
+        background-color: #8766e2; /* 밝은 빨간색 */
+    }
+
 
     /* For attendance table */
     .attendance-table-container {
