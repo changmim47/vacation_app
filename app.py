@@ -11,6 +11,7 @@ import pandas as pd
 from flask import send_file
 import requests
 import pytz
+from flask_login import login_required
 
 load_dotenv()
 
@@ -1357,6 +1358,39 @@ def get_vacation_events():
             'allDay': True
         })
     return jsonify(events)
+
+@app.route('/my-vacations-history')
+@login_required
+def my_vacations_history():
+    user_id = session.get('user_id')
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}"
+    }
+    
+    # 현재 로그인된 사용자의 휴가 신청 내역을 가져옵니다.
+    # 'vacations' 테이블에서 'user_id'가 일치하는 모든 레코드를 가져옵니다.
+    res = requests.get(
+        f"{SUPABASE_URL}/rest/v1/vacations?user_id=eq.{user_id}",
+        headers=headers
+    )
+    vacations = res.json() if res.status_code == 200 else []
+    
+    # 'type_kor' 필드를 추가하여 한국어 표기를 프론트엔드로 전달
+    for v in vacations:
+        v['type_kor'] = v['type'] # 기본값으로 type 필드를 사용
+        if v['type'] == 'full_day':
+            v['type_kor'] = '종일'
+        elif v['type'] == 'half_day_am':
+            v['type_kor'] = '반차(오전)'
+        elif v['type'] == 'half_day_pm':
+            v['type_kor'] = '반차(오후)'
+        elif v['type'] == 'quarter_day_am':
+            v['type_kor'] = '반반차(오전)'
+        elif v['type'] == 'quarter_day_pm':
+            v['type_kor'] = '반반차(오후)'
+
+    return jsonify(vacations)
 
 # ✅ 앱 실행
 if __name__ == '__main__':

@@ -6,3 +6,4 @@ python-dateutil
 pandas
 pytz
 xlsxwriter
+flask_login
