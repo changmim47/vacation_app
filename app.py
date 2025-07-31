@@ -385,17 +385,18 @@ def employee_dashboard():
 
 # ✅ 관리자용 대시보드
 @app.route('/admin')
+# @login_required # 관리자 로그인 필요 데코레이터가 있다면 유지
 def admin_dashboard():
     if 'user' not in session or session['user']['role'] != 'admin':
-        flash("관리자 대시보드 접근 권한이 없습니다.", "danger") # 플래시 메시지 추가
-        return redirect(url_for('login')) # url_for 사용
+        flash("관리자 대시보드 접근 권한이 없습니다.", "danger")
+        return redirect(url_for('login'))
 
     user = session['user'] # 현재 로그인한 관리자 정보
 
     headers = {
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Content-Type": "application/json" # Content-Type 헤더 추가 (POST/PATCH에 필요하지만 GET에도 일관성 유지)
+        "Content-Type": "application/json"
     }
 
     # 1. 모든 사용자 정보 가져오기 (이름 매핑용)
@@ -405,6 +406,7 @@ def admin_dashboard():
     )
     all_users = users_res.json() if users_res.status_code == 200 else []
     user_names = {u['id']: u['name'] for u in all_users} # user_id: name 딕셔너리 생성
+    employee_users = [u for u in all_users if u.get('role') != 'admin'] # 직원만 필터링
 
 
     # ✅ 휴가 신청 내역 조회 (deduct_from_type 컬럼도 함께 가져옴)
@@ -417,65 +419,76 @@ def admin_dashboard():
     vacations = res.json() if res.status_code == 200 else []
 
     for v in vacations:
-        v["name"] = v["users"]["name"] if "users" in v else "Unknown"
+        v["name"] = v["users"]["name"] if "users" in v else "Unknown" # 조인된 이름 사용
+        # HTML 표시를 위한 휴가 종류 설정
+        if v.get('type') == 'full_day':
+            v['display_type'] = '종일'
+        elif v.get('type') == 'half_day_am':
+            v['display_type'] = '반차(오전)'
+        elif v.get('type') == 'half_day_pm':
+            v['display_type'] = '반차(오후)'
+        elif v.get('type') == 'quarter_day_am':
+            v['display_type'] = '반반차(오전)'
+        elif v.get('type') == 'quarter_day_pm':
+            v['display_type'] = '반반차(오후)'
+        else:
+            v['display_type'] = v.get('type', '알 수 없음') # 기존 데이터 호환을 위한 폴백
+
 
     # ✅ 직원별 휴가 통계 계산
-    user_res = requests.get(f"{SUPABASE_URL}/rest/v1/users?select=id,name,join_date, role", headers=headers)
-    users = user_res.json() if user_res.status_code == 200 else []
+    user_stats_dict = defaultdict(dict) # defaultdict 사용
+    
+    # 모든 '승인됨' 상태의 휴가 기록 가져오기 (통계 계산용)
+    all_approved_vacations_res = requests.get(
+        f"{SUPABASE_URL}/rest/v1/vacations?status=eq.approved&select=user_id,used_days,deduct_from_type,type",
+        headers=headers
+    )
+    all_approved_vacations = all_approved_vacations_res.json() if all_approved_vacations_res.status_code == 200 else []
 
-    user_stats = defaultdict(dict)
-    today = datetime.today().date()
 
-    for u in users:
-        if u.get("role") == "admin":
-            continue  # ✅ 관리자 제외
-
+    for u in employee_users: # all_users 대신 employee_users 사용
         uid = u["id"]
         name = u["name"]
         join_date_str = u.get("join_date")
 
         if not join_date_str:
-            continue  # join_date 없는 경우 건너뜀
+            continue 
 
         auto_yearly, auto_monthly = calculate_leave(join_date_str)
 
-        # deduct_from_type 컬럼도 함께 가져옴
-        vac_res = requests.get(
-        f"{SUPABASE_URL}/rest/v1/vacations?user_id=eq.{uid}&status=eq.approved&select=type,used_days,deduct_from_type",
-        headers=headers
-        )
-        vacs = vac_res.json() if vac_res.status_code == 200 else []
-
-        # ✅ 사용된 연차/월차 계산 (deduct_from_type에 따라 분기)
         used_yearly = 0.0
         used_monthly = 0.0
 
-        for v in vacs:
-            try:
-                used_days_val = float(v.get("used_days", 0))
-            except (ValueError, TypeError):
-                used_days_val = 0.0 # 유효하지 않은 값 처리
+        # 현재 직원의 승인된 휴가만 필터링
+        user_approved_vacations = [
+            v for v in all_approved_vacations if v['user_id'] == uid
+        ]
 
-            # 휴가 타입과 deduct_from_type에 따라 사용 일수 합산
-            if v.get("type") == "연차":
+        for vac in user_approved_vacations:
+            try:
+                used_days_val = float(vac.get("used_days", 0))
+            except (ValueError, TypeError):
+                used_days_val = 0.0 
+
+            deduction_source = vac.get("deduct_from_type") # 'yearly' 또는 'monthly'
+
+            if deduction_source == "yearly":
                 used_yearly += used_days_val
-            elif v.get("type") == "월차":
+            elif deduction_source == "monthly":
                 used_monthly += used_days_val
-            elif v.get("type") in ["반차-오전", "반차-오후", "반반차-오전", "반반차-오후"]:
-                # deduct_from_type에 따라 연차 또는 월차에 합산
-                if v.get("deduct_from_type") == "yearly":
+            else:
+                # deduct_from_type이 없는 레거시 데이터 처리
+                # 'type' 필드의 값으로 연차/월차를 추정합니다.
+                # 'full_day'는 'yearly'로 간주합니다.
+                if vac.get("type") in ["연차", "종일"] or vac.get("type", "").startswith(("반차", "반반차")):
                     used_yearly += used_days_val
-                elif v.get("deduct_from_type") == "monthly":
+                elif vac.get("type") == "월차":
                     used_monthly += used_days_val
-                else:
-                    # deduct_from_type이 없는 기존 데이터나 잘못된 데이터 처리 (정책 결정 필요)
-                    # 예를 들어, 기본적으로 연차에서 차감되었다고 가정하거나, 로그를 남길 수 있습니다.
-                    used_yearly += used_days_val # 기본값으로 연차에 합산
-            
+        
         used_yearly = round(used_yearly, 2)
         used_monthly = round(used_monthly, 2)
 
-        user_stats[uid] = {
+        user_stats_dict[uid] = {
             "name": name,
             "auto_yearly": auto_yearly,
             "auto_monthly": auto_monthly,
@@ -484,6 +497,9 @@ def admin_dashboard():
             "remain_yearly": max(auto_yearly - used_yearly, 0),
             "remain_monthly": max(auto_monthly - used_monthly, 0)
         }
+    
+    user_stats = list(user_stats_dict.values()) # 딕셔너리 값을 리스트로 변환하여 템플릿에 전달
+
 
     # ✅ 결재할 휴가 / 완료된 휴가 건수 계산
     pending_count = sum(1 for v in vacations if v['status'] == 'pending')
@@ -494,7 +510,9 @@ def admin_dashboard():
     try:
         # 모든 직원의 근태 기록을 가져옵니다.
         # 필요시 날짜 범위 제한 (예: 최근 30일)
-        thirty_days_ago = (datetime.now() - timedelta(days=30)).date()
+        kst_timezone = pytz.timezone('Asia/Seoul')
+        thirty_days_ago = (datetime.now(kst_timezone) - timedelta(days=30)).date() # KST 기준으로 30일 전 날짜 계산
+
         all_attendance_params = {
             "date": f"gte.{thirty_days_ago.isoformat()}", # 최근 30일 기록
             "order": "date.desc,check_in_time.desc" # 날짜 역순, 같은 날은 출근시간 역순 정렬
@@ -516,7 +534,7 @@ def admin_dashboard():
                 
                 # 직원 이름 추가
                 record_user_id = record.get('user_id')
-                employee_name = user_names.get(record_user_id, "알 수 없는 직원")
+                employee_name = user_names.get(record_user_id, "알 수 없는 직원") # user_names 딕셔너리 사용
 
                 check_in_display = 'N/A'
                 check_out_display = 'N/A'
@@ -525,27 +543,26 @@ def admin_dashboard():
                 dt_in_combined = None
                 dt_out_combined = None
 
-                # 출근 시간 파싱
+                # 출근 시간 파싱 및 AM/PM 포맷
                 if check_in_time_raw and record_date_str:
                     try:
                         dt_in_combined = datetime.strptime(f"{record_date_str} {check_in_time_raw}", '%Y-%m-%d %H:%M:%S')
-                        check_in_display = check_in_time_raw[:5] # HH:MM
+                        check_in_display = dt_in_combined.strftime('%I:%M %p') # HH:MM AM/PM
                     except ValueError:
                         print(f"관리자 근태: 출근 시간 또는 날짜 파싱 오류: 날짜={record_date_str}, 시간={check_in_time_raw}")
 
-                # 퇴근 시간 파싱
+                # 퇴근 시간 파싱 및 AM/PM 포맷
                 if check_out_time_raw and record_date_str:
                     try:
                         dt_out_combined = datetime.strptime(f"{record_date_str} {check_out_time_raw}", '%Y-%m-%d %H:%M:%S')
-                        check_out_display = check_out_time_raw[:5] # HH:MM
+                        check_out_display = dt_out_combined.strftime('%I:%M %p') # HH:MM AM/PM
                     except ValueError:
                         print(f"관리자 근태: 퇴근 시간 또는 날짜 파싱 오류: 날짜={record_date_str}, 시간={check_out_time_raw}")
 
                 # 근무 시간 계산
                 if dt_in_combined and dt_out_combined:
-                    # 퇴근 시간이 출근 시간보다 빠를 경우 (예: 자정 넘어 근무)
                     if dt_out_combined < dt_in_combined:
-                         dt_out_combined += timedelta(days=1)
+                           dt_out_combined += timedelta(days=1)
 
                     duration = dt_out_combined - dt_in_combined
                     total_seconds = int(duration.total_seconds())
@@ -580,11 +597,11 @@ def admin_dashboard():
         "admin_dashboard.html",
         user=session['user'],
         vacations=vacations,
-        user_stats=user_stats.values(),
+        user_stats=user_stats, # user_stats_dict.values() 대신 user_stats 사용
         pending_count=pending_count,
         completed_count=completed_count,
         all_attendance_records=all_attendance_records,
-        all_users=all_users
+        all_users=employee_users # all_users 대신 employee_users 사용 (관리자 제외된 목록)
     )
 
 @app.route("/monthly-stats")
@@ -1280,48 +1297,92 @@ def request_vacation():
         print(f"Supabase Post Error: {res_post.status_code}, {res_post.text}")
         return redirect('/employee')
 
-# ✅ 캘린더용 이벤트 데이터 JSON API
 @app.route('/vacation-events')
-def vacation_events():
-    if 'user' not in session:
-        return redirect('/login')
+def get_vacation_events(): # 함수 이름을 get_vacation_events로 통일합니다.
+    # 이 라우트는 캘린더에 표시될 이벤트 데이터를 제공하므로,
+    # 로그인 여부 체크는 필요에 따라 추가할 수 있지만, 일반적으로 공개 API로 사용됩니다.
+    # if 'user' not in session:
+    #     return redirect('/login')
 
     headers = {
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}"
     }
-
-    # 🔹 사용자 이름 포함, 승인된 휴가만 가져오기
-    params = {
-        "select": "start_date,end_date,type,users(name)",
-        "status": "eq.approved"
-    }
-
-    res = requests.get(f"{SUPABASE_URL}/rest/v1/vacations", headers=headers, params=params)
+    
+    # 모든 휴가 기록 가져오기 (status 무관)
+    # user_id, type, deduct_from_type, status, start_date, end_date, users(name)을 선택
+    # employee_name 컬럼도 함께 가져와서 폴백으로 사용
+    res = requests.get(
+        f"{SUPABASE_URL}/rest/v1/vacations?select=user_id,type,deduct_from_type,status,start_date,end_date,users(name),employee_name",
+        headers=headers
+    )
     vacations = res.json() if res.status_code == 200 else []
-
-    # 🔹 휴가 타입에 따라 className 지정
-    type_to_class = {
-        "연차": "vacation-annual",
-        "월차": "vacation-monthly",
-        "반차-오전": "vacation-half-am",
-        "반차-오후": "vacation-half-pm",
-        "반반차-오전": "vacation-quarter-am",
-        "반반차-오후": "vacation-quarter-pm"
-    }
 
     events = []
     for v in vacations:
-        name = v['users']['name'] if "users" in v and v['users'] else "Unknown"
-        class_name = type_to_class.get(v['type'], "vacation-default")
+        event_class_names = []
+        
+        # 직원 이름 가져오기 (조인된 users.name 우선, 없으면 employee_name 컬럼 사용)
+        employee_name = v.get('users', {}).get('name') or v.get('employee_name', '알 수 없음')
+
+        # 캘린더 제목에 표시될 사용자 친화적인 휴가 종류 결정
+        display_type = v.get('type', '휴가') # 기본값은 '휴가'
+        if v.get('type') == '종일': # 'full_day' 대신 '종일'로 변경
+            display_type = '종일'
+        elif v.get('type') == '반차-오전': # 'half_day_am' 대신 '반차-오전'으로 변경
+            display_type = '반차(오전)'
+        elif v.get('type') == '반차-오후': # 'half_day_pm' 대신 '반차-오후'로 변경
+            display_type = '반차(오후)'
+        elif v.get('type') == '반반차-오전': # 'quarter_day_am' 대신 '반반차-오전'으로 변경
+            display_type = '반반차(오전)'
+        elif v.get('type') == '반반차-오후': # 'quarter_day_pm' 대신 '반반차-오후'로 변경
+            display_type = '반반차(오후)'
+        # 기존 '연차', '월차' 타입도 처리 (이전 데이터 호환)
+        elif v.get('type') == '연차':
+            display_type = '연차'
+        elif v.get('type') == '월차':
+            display_type = '월차'
+        
+        # 차감 유형에 따른 클래스 추가
+        if v.get('deduct_from_type') == 'yearly':
+            event_class_names.append('vacation-deduct-yearly')
+        elif v.get('deduct_from_type') == 'monthly':
+            event_class_names.append('vacation-deduct-monthly')
+
+        # 휴가 종류(세부)에 따른 클래스 추가 (deduct_from_type과 별개로 색상 부여 가능)
+        # v.get('type') 값은 '종일', '반차-오전', '반차-오후', '반반차-오전', '반반차-오후' 등으로 저장됩니다.
+        if v.get('type') == '종일': # 'full_day' 대신 '종일'로 변경
+            # 종일 휴가는 deduct_from_type의 색상을 따르므로 별도 type 클래스 추가 안 함
+            # 만약 종일 휴가에 별도의 배경색을 원한다면, 여기에 클래스를 추가하고 CSS에 정의해야 합니다.
+            # event_class_names.append('vacation-type-full-day') 
+            pass
+        elif v.get('type') == '반차-오전': # 'half_day_am' 대신 '반차-오전'으로 변경
+            event_class_names.append('vacation-type-half-day-am')
+        elif v.get('type') == '반차-오후': # 'half_day_pm' 대신 '반차-오후'로 변경
+            event_class_names.append('vacation-type-half-day-pm')
+        elif v.get('type') == '반반차-오전': # 'quarter_day_am' 대신 '반반차-오전'으로 변경
+            event_class_names.append('vacation-type-quarter-day-am')
+        elif v.get('type') == '반반차-오후': # 'quarter_day_pm' 대신 '반반차-오후'로 변경
+            event_class_names.append('vacation-type-quarter-day-pm')
+        
+        # 휴가 상태에 따른 클래스 추가 (승인/대기/반려)
+        event_status = v.get('status')
+        if event_status:
+            event_class_names.append(f"vacation-status-{event_status}")
+
+        # FullCalendar의 'end' 날짜는 종료일 다음 날로 설정해야 범위가 올바르게 표시됩니다.
+        end_date_inclusive = (datetime.strptime(v['end_date'], "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
 
         events.append({
-            "title": f"[{v['type']}] {name}",
-            "start": v['start_date'],
-            "end": (datetime.strptime(v['end_date'], "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d"),
-            "className": class_name
+            'title': f"{employee_name} ({display_type})", # 캘린더 제목에 직원 이름과 휴가 종류 표시
+            'start': v['start_date'],
+            'end': end_date_inclusive,
+            'classNames': event_class_names, # 생성된 클래스 리스트 할당
+            'allDay': True # 종일 이벤트로 표시
         })
-
+        # --- 디버깅용 출력 ---
+        print(f"DEBUG_CALENDAR_EVENT: Title: {employee_name} ({display_type}), Start: {v['start_date']}, End: {v['end_date']}, ClassNames: {event_class_names}, Status: {event_status}, DeductType: {v.get('deduct_from_type')}, Type: {v.get('type')}")
+        # --- 디버깅용 출력 끝 ---
     return jsonify(events)
 
 # ✅ 앱 실행
