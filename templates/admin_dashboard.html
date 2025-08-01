@@ -675,8 +675,11 @@
         if (selectedUserId === 'all') {
             filteredRecords = allAttendanceRecordsData;
         } else {
+            // 기존 코드: record.user_id === selectedUserId (타입까지 엄격하게 비교)
+            // 수정된 코드: record.user_id == selectedUserId (값만 비교)
+            // 또는 명시적으로 타입을 변환하여 비교하는 방법도 있습니다.
             filteredRecords = allAttendanceRecordsData.filter(record => 
-                record.user_id === selectedUserId // user_id로 필터링 (Flask에서 user_id도 함께 넘겨줘야 함)
+                record.user_id == selectedUserId
             );
         }
         renderAttendanceTable(filteredRecords);
@@ -684,9 +687,9 @@
         // 다운로드 버튼의 href 업데이트 (선택된 필터 반영)
         if (downloadAttendanceBtn) {
             if (selectedUserId === 'all') {
-                downloadAttendanceBtn.href = '/download-attendance-stats'; // 모든 직원
+                downloadAttendanceBtn.href = '/download-attendance-stats';
             } else {
-                downloadAttendanceBtn.href = `/download-attendance-stats?user_id=${selectedUserId}`; // 특정 직원
+                downloadAttendanceBtn.href = `/download-attendance-stats?user_id=${selectedUserId}`;
             }
         }
     }
