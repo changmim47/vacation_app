@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}휴가 현황 | 직원 대시보드{% endblock %}
+
+{% block head_extras %}
+    <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.css" rel="stylesheet">
+    <style>
+        .fc-toolbar-title {
+            font-weight: 700;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+    <div class="dynamic-content-area">
+        <h4>📅 휴가 현황</h4>
+        <div id="calendar"></div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/locales-all.global.min.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const calendarEl = document.getElementById('calendar');
+      const calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'dayGridMonth',
+        locale: 'ko',
+        height: '85vh', // 캘린더 높이를 화면 높이의 80%로 설정
+        headerToolbar: {
+          left: 'today prev,next',
+          center: 'title',
+          right: 'dayGridMonth,timeGridWeek,listWeek'
+        },
+        // ✅ 공휴일 및 휴가 이벤트 로딩
+        events: function(fetchInfo, successCallback, failureCallback) {
+          const year = fetchInfo.start.getFullYear();
+          const holidayUrl = `/static/holidays/${year}holidays.json`;
+
+          Promise.all([
+            fetch('/vacation-events').then(res => res.json()),
+            fetch(holidayUrl).then(res => res.json()).catch(() => [])
+          ])
+          .then(([vacationEvents, holidayData]) => {
+            const holidays = holidayData.map(h => ({
+              title: h.title,
+              start: h.start, // JSON 데이터의 'start' 필드를 사용하도록 수정
+              color: 'red',
+              allDay: true
+            }));
+            successCallback([...vacationEvents, ...holidays]);
+          })
+          .catch(error => {
+            console.error('이벤트 로딩 실패:', error);
+            failureCallback(error);
+          });
+        },
+        // ✅ 주말 색상 설정
+        dayCellDidMount: function(info) {
+          const day = info.date.getDay();
+          const numberEl = info.el.querySelector('.fc-daygrid-day-number');
+          if (numberEl) {
+            if (day === 0) numberEl.style.color = 'red';
+            else if (day === 6) numberEl.style.color = 'blue';
+          }
+        },
+        eventDidMount: function(info) {
+          const holidayTitle = info.event.title;
+          const holidayStart = info.event.startStr;
+          
+          if (info.el.classList.contains('fc-event-full')) {
+            const dayEl = document.querySelector(`.fc-day[data-date="${holidayStart}"]`);
+            if (dayEl) {
+              const holidayText = dayEl.querySelector('.fc-daygrid-day-bottom');
+              if (holidayText) {
+                // 이미 공휴일이 표시되어 있다면 중복 방지
+                if (!holidayText.querySelector('.holiday-text')) {
+                  const span = document.createElement('span');
+                  span.className = 'holiday-text';
+                  span.style.fontSize = '0.7em';
+                  span.style.color = 'red';
+                  span.style.marginLeft = '5px';
+                  span.textContent = holidayTitle;
+                  holidayText.appendChild(span);
+                }
+              }
+            }
+          }
+        }
+      });
+
+      calendar.render();
+    });
+    </script>
+{% endblock %}

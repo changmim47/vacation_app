@@ -1,0 +1,57 @@
+/* ... (사용자님이 제공하신 기존 CSS) ... */
+.vacation-annual_leave { 
+    background-color: #007bff; color: white; 
+}
+
+.vacation-monthly_leave { 
+    background-color: #28a745; color: white; 
+}
+
+.vacation-type-full-day {
+    background-color: #007bff; 
+}
+
+/* 반차 (오전/오후) */
+.vacation-type-half-day {
+    background-color: #f1c40f; /* 밝은 노란색 */
+}
+
+/* 반반차 (오전/오후) */
+.vacation-type-quarter-day {
+    background-color: #8766e2; /* 밝은 빨간색 */
+}
+
+/* FullCalendar 이벤트 제목 가운데 정렬 */
+.fc-event-title {
+    text-align: center;
+    width: 100%;
+    display: block;
+}
+
+.fc .fc-daygrid-day-number {
+    font-size: 14px;
+    padding: 4px;
+}
+
+.fc .fc-toolbar-title {
+    font-size: 20px; 
+}
+
+.fc .fc-button {
+    padding: 5px 12px;
+    font-size: 13px;
+    height: auto;
+    border-radius: 20px;
+    border: 1px solid #ced4da;
+    background-color: #fff;
+    color: #495057;
+}
+
+/* FullCalendar 이벤트 스타일 */
+.fc-event {
+    border: none;
+    font-size: 13px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    margin-bottom: 2px;
+}

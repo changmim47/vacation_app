@@ -1,0 +1,294 @@
+/* base.html 전체 레이아웃 스타일 */
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Noto Sans KR', sans-serif;
+            background-color: #f4f7f9;
+            color: #495057;
+}
+.page-container {
+    display: flex;
+    min-height: 100vh;
+}
+.sidebar {
+    width: 220px;
+    background-color: #ffffff;
+    padding: 20px 15px;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    border-right: 1px solid #e0e0e0;
+}
+.main-content {
+    flex-grow: 1;
+    margin-left: 250px; /* 사이드바 너비만큼 여백 */
+    padding: 20px;
+    background-color: #f4f7f9;
+}
+.content-block {
+    background-color: #ffffff;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+}
+
+/* 사용자 정보 및 출퇴근 버튼 */
+.user-box {
+    border-bottom: 1px solid #eee;
+    padding-bottom: 20px;
+    margin-bottom: 20px;
+    text-align: center;
+}
+.user-info {
+    margin-bottom: 15px;
+}
+.user-name {
+    font-size: 1.2rem;
+    font-weight: 700;
+    display: block;
+    color: #444;
+}
+.user-info small {
+    color: #436ec9;
+    font-weight: bold;
+    font-size: 15px;
+}
+.attendance-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 10px;
+}
+.attendance-button {
+    width: 80px;
+    padding: 8px;
+    border: none;
+    border-radius: 5px;
+    font-size: 15px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    color: #fff;
+}
+.attendance-button.check-in {
+    background-color: #28a745;
+}
+.attendance-button.check-in:disabled {
+    background-color: #9cd4a7;
+    cursor: not-allowed;
+}
+.attendance-button.check-out {
+    background-color: #dc3545;
+}
+.attendance-button.check-out:disabled {
+    background-color: #f1b3b9;
+    cursor: not-allowed;
+}
+.attendance-status {
+    margin-top: 15px;
+    text-align: center;
+    font-size: 0.9rem;
+    color: #666;
+}
+.status-item {
+    font-weight: 500;
+}
+
+/* 메인 메뉴 */
+.main-menu {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.menu-item {
+    display: flex;
+    align-items: center;
+    padding: 12px 15px;
+    border-radius: 8px;
+    text-decoration: none;
+    color: #555;
+    font-weight: 500;
+    transition: background-color 0.2s, color 0.2s;
+}
+.menu-item:hover {
+    background-color: #f0f4f7;
+    color: #007bff;
+}
+.menu-item.active {
+    background-color: #e3f2fd;
+    color: #007bff;
+    font-weight: 600;
+}
+.menu-item .material-icons-outlined {
+    margin-right: 15px;
+    font-size: 1.5rem;
+}
+
+/* 로그아웃 버튼 */
+.logout-container {
+    padding-top: 20px;
+    border-top: 1px solid #eee;
+    text-align: center;
+}
+.logout-button {
+    width: 100%;
+    padding: 12px;
+    background-color: #f8d7da;
+    color: #721c24;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transition: background-color 0.2s;
+}
+.logout-button:hover {
+    background-color: #f5c6cb;
+}
+
+/* ---- 메인 대시보드 카드 레이아웃 스타일 (2x2 그리드) ---- */
+
+.main-dashboard-container {
+    padding: 20px;
+}
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto;
+    gap: 20px;
+    margin-top: 20px;
+}
+.card {
+    background-color: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+    padding: 20px;
+    border: 1px solid #e0e0e0;
+    transition: transform 0.2s ease-in-out;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 10px;
+    margin-bottom: 15px;
+}
+
+.card-header h5 {
+    margin: 0;
+    font-weight: 600;
+    font-size: 17px;
+    color: #333;
+    display: flex;
+    align-items: center;
+}
+
+.card-header h5 i {
+    font-size: 30px;
+    margin-right: 8px;
+    color: #007bff;
+}
+
+.card p.text-center {
+    color: #888;
+    text-align: center;
+    margin-top: 20px;
+}
+
+.card-body {
+    padding: 16px;
+}
+       
+
+/* 우측 상단 카드 그룹 */
+.card-group {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* 연차 현황 카드 */
+.leave-status .leave-summary {
+    display: flex;
+    justify-content: space-between;
+    text-align: center;
+}
+.leave-status .leave-item {
+    flex: 1;
+}
+.leave-status .leave-item span {
+    display: block;
+    font-size: 0.9rem;
+    color: #666;
+    margin-bottom: 5px;
+}
+.leave-status .leave-item strong {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #007bff;
+}
+.leave-status .leave-item strong small {
+    font-size: 1rem;
+    font-weight: 400;
+    color: #666;
+}
+
+/* 신청 내역 카드 */
+.application-counts {
+    display: flex;
+    justify-content: space-around;
+    text-align: center;
+}
+.application-item {
+    flex: 1;
+}
+.application-item small {
+    display: block;
+    font-size: 0.9rem;
+    color: #666;
+}
+.application-item strong {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #333;
+}
+.application-item.pending strong { color: #ffc107; }
+.application-item.approved strong { color: #28a745; }
+.application-item.rejected strong { color: #dc3545; }
+p.no-vacation {
+    text-align: center;
+    color: #888;
+    margin-top: 20px;
+}
+
+/* MY 근무 현황 카드 */
+.my-attendance-status .attendance-info {
+    display: flex;
+    justify-content: space-between;
+    font-size: 1.1rem;
+    margin-bottom: 10px;
+}
+.my-attendance-status .attendance-info span {
+    font-weight: 500;
+    color: #555;
+}
+.my-attendance-status .attendance-info strong {
+    font-weight: 700;
+}
+.my-attendance-status .check-in-time { color: #28a745; }
+.my-attendance-status .check-out-time { color: #dc3545; }

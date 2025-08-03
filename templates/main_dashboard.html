@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+
+{% block title %}학습지원팀HR{% endblock %}
+
+{% block content %}
+<div class="main-dashboard-container">
+    <h4>My 오피스</h4>
+    
+    <div class="dashboard-grid">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="material-icons-outlined">beach_access</i>부서 휴가 현황</h5>
+                <a href="{{ url_for('vacation_calendar') }}">더보기 ></a>
+            </div>
+            <div class="card-body">
+                <!-- 여기에 JavaScript로 휴가 정보를 로드합니다 -->
+                <div id="vacation-list-container" class="vacation-list">
+                    <!-- 로딩 스피너 -->
+                    <div class="loading-spinner">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card-group">
+            <div class="card leave-status">
+                <div class="card-header">
+                    <h5><i class="material-icons-outlined">calendar_today</i> 연차 현황</h5>
+                </div>
+                <div class="leave-summary">
+                    <div class="leave-item">
+                        <span>부여</span>
+                        <strong>{{ user.yearly_leave + user.monthly_leave | default(0) }}<small> 일</small></strong>
+                    </div>
+                    <div class="leave-item">
+                        <span>사용</span>
+                        <strong>{{ user.total_used_days | default(0) }}<small> 일</small></strong>
+                    </div>
+                    <div class="leave-item">
+                        <span>잔여</span>
+                        <strong>{{ user.remaining_total | default(0) }}<small> 일</small></strong>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card application-status">
+                <div class="card-header">
+                    <h5><i class="material-icons-outlined">airplane_ticket</i> 신청 내역</h5>
+                    <a href="javascript:void(0);" onclick="openVacationModal()">더보기 ></a>
+                </div>
+                <div class="application-counts">
+                    <div class="application-item pending">
+                        <small>대기중</small>
+                        <strong>{{ pending_count | default(0) }}</strong>
+                    </div>
+                    <div class="application-item approved">
+                        <small>승인됨</small>
+                        <strong>{{ approved_count | default(0) }}</strong>
+                    </div>
+                    <div class="application-item rejected">
+                        <small>반려됨</small>
+                        <strong>{{ rejected_count | default(0) }}</strong>
+                    </div>
+                </div>
+                {% if pending_count == 0 and approved_count == 0 and rejected_count == 0 %}
+                    <p class="no-vacation">휴가 내역이 없습니다.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div id="vacationModal" class="modal-overlay" style="display:none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5>📋 나의 휴가 신청 내역</h5>
+                    <span class="close-btn" onclick="closeModal()">x</span>
+                </div>
+                <div class="modal-body">
+                    <table class="vacation-table">
+                        <thead>
+                            <tr>
+                                <th>신청일자</th>
+                                <th>휴가유형</th>
+                                <th>휴가종류</th>
+                                <th>사용일수</th>
+                                <th>시작일자</th>
+                                <th>종료일자</th>
+                                <th>승인상태</th>
+                            </tr>
+                        </thead>
+                        <tbody id="vacationTableBody">
+                            <tr><td colspan="7" style="text-align:center;">불러오는 중...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="material-icons-outlined">campaign</i>공지사항</h5>
+                <a href="#">더보기 ></a>
+            </div>
+            <div class="card-body">
+                <p class="text-center text-muted">준비 중인 기능입니다.</p>
+            </div>
+        </div>
+        
+        <div class="card my-attendance-status">
+            <div class="card-header">
+                <h5><i class="material-icons-outlined">schedule</i>MY 근무 현황</h5>
+                <a href="{{ url_for('my_attendance') }}">더보기 ></a>
+            </div>
+            <div class="card-body">
+                <div class="attendance-info">
+                    <span>출근:</span>
+                    <strong class="check-in-time">{{ current_check_in_time | default('출근전') }}</strong>
+                </div>
+                <div class="attendance-info">
+                    <span>퇴근:</span>
+                    <strong class="check-out-time">{{ current_check_out_time | default('None') }}</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const container = document.getElementById('vacation-list-container');
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); // 오늘 날짜만 비교하기 위해 시간 초기화
+
+        fetch('{{ url_for("get_vacation_events") }}')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('네트워크 응답이 올바르지 않습니다.');
+                }
+                return response.json();
+            })
+            .then(events => {
+                // 승인된(approved) 휴가 이벤트만 필터링
+                const approvedVacations = events.filter(event => 
+                    event.classNames.includes('vacation-status-approved')
+                );
+                
+                // 오늘 날짜 이후에 시작하는 휴가만 필터링
+                const futureVacations = approvedVacations.filter(event => {
+                    const startDate = new Date(event.start);
+                    startDate.setHours(0, 0, 0, 0); // 날짜만 비교하기 위해 시간 초기화
+                    return startDate >= today;
+                });
+
+                // 컨테이너 초기화
+                container.innerHTML = '';
+
+                if (futureVacations.length > 0) {
+                    // 휴가 리스트를 시작 날짜 기준으로 오름차순 정렬
+                    futureVacations.sort((a, b) => new Date(a.start) - new Date(b.start));
+
+                    futureVacations.forEach(vacation => {
+                        // FullCalendar의 end 날짜는 종료일 다음 날이므로, 하루를 빼서 표시
+                        const endDate = new Date(vacation.end);
+                        endDate.setDate(endDate.getDate() - 1);
+                        
+                        // 제목에서 이름과 휴가 종류 분리
+                        const titleParts = vacation.title.match(/(.*) \((.*)\)/);
+                        const employeeName = titleParts ? titleParts[1].trim() : '이름 없음';
+                        const vacationType = titleParts ? titleParts[2].trim() : '휴가';
+                        
+                        // 휴가 기간 및 사용 일수 계산
+                        const startDate = new Date(vacation.start);
+                        const usedDays = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24) + 1;
+
+                        const vacationItem = document.createElement('div');
+                        vacationItem.className = 'vacation-item';
+
+                        vacationItem.innerHTML = `
+                            <div class="vacation-item-content">
+                                <div class="vacation-title">
+                                    <span class="tag">${vacationType}</span> <span class="name">${employeeName}</span>
+                                </div>
+                                <div class="vacation-dates">
+                                    ${vacation.start} ~ ${endDate.toISOString().substring(0, 10)} (${usedDays}일)
+                                </div>
+                            </div>
+                            <span class="vacation-status status-approved">승인됨</span>
+                        `;
+                        container.appendChild(vacationItem);
+                    });
+                } else {
+                    container.innerHTML = '<p class="no-vacations-message">현재 승인된 휴가자가 없습니다.</p>';
+                }
+            })
+            .catch(error => {
+                console.error('휴가 정보를 가져오는 중 오류 발생:', error);
+                container.innerHTML = '<p class="no-vacations-message">휴가 정보를 불러올 수 없습니다.</p>';
+            });
+    });
+
+    function openVacationModal() {
+        document.getElementById('vacationModal').style.display = 'flex';
+
+        fetch('/my-vacations-history')
+            .then(res => res.json())
+            .then(data => {
+                const tbody = document.getElementById('vacationTableBody');
+                tbody.innerHTML = '';
+
+                if (data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">휴가 신청 내역이 없습니다.</td></tr>';
+                    return;
+                }
+
+                data.forEach(v => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${v.requested_at ? v.requested_at.slice(0, 10) : '-'}</td>
+                        <td>${v.deduct_from_type === 'yearly' ? '연차' : (v.deduct_from_type === 'monthly' ? '월차' : '기타')}</td>
+                        <td>${v.type_kor || '-'}</td>
+                        <td>${v.used_days || 0}일</td>
+                        <td>${v.start_date || '-'}</td>
+                        <td>${v.end_date || '-'}</td>
+                        <td>${statusToKor(v.status)}</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            })
+            .catch(() => {
+                document.getElementById('vacationTableBody').innerHTML = '<tr><td colspan="7" style="text-align:center;">불러오기 실패</td></tr>';
+            });
+    }
+
+    function closeModal() {
+        document.getElementById('vacationModal').style.display = 'none';
+    }
+
+    function statusToKor(status) {
+        if (status === 'pending') return '대기중';
+        if (status === 'approved') return '승인됨';
+        if (status === 'rejected') return '반려됨';
+        return '-';
+    }
+
+                {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    alert("{{ message }}");
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+</script>
+{% endblock %}

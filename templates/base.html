@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{% endblock %} 근태관리 시스템</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='base.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='main_dashboard.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='vacation_calendar.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='my_attendance.css') }}">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@100..900&display=swap" rel="stylesheet">
+    {% block head_extras %}{% endblock %}
+</head>
+<body>
+    <div class="page-container">
+        <aside class="sidebar">
+            <div class="user-box">
+                <div class="user-info">
+                    <small>안녕하세요!</small>
+                    <span class="user-name">{{ user.name }} 사원</span>
+                </div>
+                <div class="attendance-buttons">
+                    <form method="POST" action="/attendance">
+                        <input type="hidden" name="type" value="출근">
+                        <button type="submit" class="attendance-button check-in"
+                                {% if current_check_in_time %}disabled{% endif %}>
+                            출근
+                        </button>
+                    </form>
+                    <form method="POST" action="/attendance">
+                        <input type="hidden" name="type" value="퇴근">
+                        <button type="submit" class="attendance-button check-out"
+                                {% if not current_check_in_time or current_check_out_time %}disabled{% endif %}>
+                            퇴근
+                        </button>
+                    </form>
+                </div>
+            </div>
+            <nav class="main-menu">
+                <a href="{{ url_for('main_dashboard') }}" class="menu-item {% if request.path == url_for('main_dashboard') %}active{% endif %}">
+                    <span class="material-icons-outlined">home</span>
+                    <span>홈</span>
+                </a>
+                <a href="{{ url_for('vacation_calendar') }}" class="menu-item {% if request.path == url_for('vacation_calendar') %}active{% endif %}">
+                    <span class="material-icons-outlined">beach_access</span>
+                    <span>휴가 현황</span>
+                </a>
+                <a href="{{ url_for('vacation_request') }}" class="menu-item {% if request.path == url_for('vacation_request') %}active{% endif %}">
+                    <span class="material-icons-outlined">airplane_ticket</span>
+                    <span>휴가 신청</span>
+                </a>
+                <a href="{{ url_for('my_attendance') }}" class="menu-item {% if request.path == url_for('my_attendance') %}active{% endif %}">
+                    <span class="material-icons-outlined">schedule</span>
+                    <span>MY 근태현황</span>
+                </a>
+                <a href="#" class="menu-item">
+                    <span class="material-icons-outlined">campaign</span>
+                    <span>공지사항</span>
+                </a>
+            </nav>
+            <div class="logout-container">
+                <form method="POST" action="/logout">
+                    <button type="submit" class="logout-button" title="로그아웃">
+                        <span class="material-icons-outlined">power_settings_new</span>
+                        <span>로그아웃</span>
+                    </button>
+                </form>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <div class="content-block">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+    
+    {% block scripts %}{% endblock %}
+</body>
+</html>

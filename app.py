@@ -55,7 +55,7 @@ def login():
             if user['role'] == 'admin':
                 return redirect('/admin')
             else:
-                return redirect('/employee')
+                return redirect('/dashboard')
         else:
             return render_template('login.html', error="❌ 로그인 실패. 다시 확인해주세요.")
     return render_template('login.html')
@@ -67,125 +67,9 @@ def logout():
     flash('로그아웃되었습니다.', 'info') # Set the flash message
     return redirect('/login')
 
-# ✅ 공용캘린더
-@app.route('/calendar')
-def calendar():
-    if 'user' not in session:
-        return redirect('/login')
-    return render_template('calendar.html')
-
-# attendance 라우트 (출퇴근 기록 처리)
-@app.route('/attendance', methods=['POST'])
-def attendance():
-    user = session.get('user')
-    if not user:
-        flash("로그인이 필요합니다.", "danger")
-        return redirect(url_for('login'))
-
-    user_id = user['id']
-    employee_name = user.get('name') # 세션에서 직원 이름 가져오기
-    record_type = request.form.get('type') # '출근' 또는 '퇴근'
-    
-    # KST (한국 표준시) 시간대를 명시적으로 지정하여 현재 시간과 날짜를 가져옵니다.
-    kst_timezone = pytz.timezone('Asia/Seoul')
-    now_kst = datetime.now(kst_timezone) # <-- 이 줄을 추가합니다.
-    today_date_str = now_kst.strftime('%Y-%m-%d') # <-- now 대신 now_kst 사용
-    current_time_str = now_kst.strftime('%H:%M:%S') # <-- now 대신 now_kst 사용
-
-    headers = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    try:
-        # Supabase에 오늘 날짜의 기록을 조회할 때 KST 기준 날짜 사용
-        existing_attendance_params = {
-            "user_id": f"eq.{user_id}",
-            "date": f"eq.{today_date_str}" # <-- KST 기준 날짜 사용
-        }
-        res_check_exist = requests.get(
-            f"{SUPABASE_URL}/rest/v1/attendances",
-            headers=headers,
-            params=existing_attendance_params
-        )
-        existing_records = res_check_exist.json() if res_check_exist.status_code == 200 else []
-        current_day_attendance = existing_records[0] if existing_records else None
-
-        if record_type == '출근':
-            if current_day_attendance and current_day_attendance.get('check_in_time'):
-                # 오늘 날짜의 기록이 있고 이미 출근 시간이 있다면
-                flash("이미 출근 처리되었습니다.", "info")
-            else:
-                if current_day_attendance:
-                    # 오늘 날짜의 기록은 있지만 출근 시간이 없다면 (퇴근만 있거나, 혹은 Supabase 제약 조건에 의해 빈 레코드가 생성된 경우)
-                    data_to_update = {
-                        'check_in_time': current_time_str,
-                        'employee_name': employee_name # <-- 여기에 직원 이름 추가
-                        }
-                    res = requests.patch(
-                        f"{SUPABASE_URL}/rest/v1/attendances?id=eq.{current_day_attendance['id']}",
-                        headers=headers,
-                        json=data_to_update
-                    )
-                    if res.status_code == 200 or res.status_code == 204:
-                        flash(f"출근 처리되었습니다: {now_kst.strftime('%I:%M %p')}", "success") # <-- now_kst 사용 및 AM/PM 포맷
-                    else:
-                        raise Exception(f"출근 기록 업데이트 실패: {res.status_code} - {res.text}")
-                else:
-                    # 오늘 날짜의 기록이 전혀 없다면 새로운 기록 생성
-                    data_to_send = {
-                        'user_id': user_id,
-                        'date': today_date_str,
-                        'check_in_time': current_time_str,
-                        'check_out_time': None,
-                        'employee_name': employee_name
-                    }
-                    res = requests.post(
-                        f"{SUPABASE_URL}/rest/v1/attendances",
-                        headers=headers,
-                        json=data_to_send
-                    )
-                    if res.status_code == 201:
-                        flash(f"출근 처리되었습니다: {now_kst.strftime('%I:%M %p')}", "success") # <-- now_kst 사용 및 AM/PM 포맷
-                    else:
-                        raise Exception(f"출근 기록 생성 실패: {res.status_code} - {res.text}")
-
-        elif record_type == '퇴근':
-            if not current_day_attendance or not current_day_attendance.get('check_in_time'):
-                flash("출근 기록이 먼저 필요합니다.", "warning")
-            elif current_day_attendance.get('check_out_time'):
-                flash("이미 퇴근 처리되었습니다.", "info")
-            else:
-                if current_day_attendance:
-                    data_to_update = {'check_out_time': current_time_str}
-                    res = requests.patch(
-                        f"{SUPABASE_URL}/rest/v1/attendances?id=eq.{current_day_attendance['id']}",
-                        headers=headers,
-                        json=data_to_update
-                    )
-                    if res.status_code == 200 or res.status_code == 204:
-                        flash("오늘 하루도 수고하셨습니다.", "success")
-                    else:
-                        raise Exception(f"퇴근 기록 업데이트 실패: {res.status_code} - {res.text}")
-                else:
-                    flash("출근 기록이 없어 퇴근 처리가 불가능합니다.", "warning")
-
-    except requests.exceptions.RequestException as e:
-        print(f"Supabase 요청 오류: {e}")
-        flash("네트워크 통신 중 오류가 발생했습니다.", "danger")
-    except Exception as e:
-        print(f"근태 처리 중 오류가 발생했습니다: {e}")
-        import traceback
-        traceback.print_exc()
-        flash("근태 처리 중 알 수 없는 오류가 발생했습니다.", "danger")
-
-    return redirect(url_for('employee_dashboard'))
-
-
 # ✅ 직원용 대시보드
-@app.route('/employee')
-def employee_dashboard():
+@app.route('/dashboard')
+def main_dashboard():
     if 'user' not in session or session['user']['role'] != 'employee':
         flash("직원 대시보드 접근 권한이 없습니다.", "danger")
         return redirect(url_for('login'))
@@ -196,6 +80,24 @@ def employee_dashboard():
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}"
     }
+
+    # === [추가된 부분 시작] 출퇴근 기록 가져오기 (메인 대시보드 버튼용) ===
+    kst_timezone = pytz.timezone('Asia/Seoul')
+    today = datetime.now(kst_timezone).date()
+    current_check_in_time = None
+    current_check_out_time = None
+    today_attendance_params = {
+        "user_id": f"eq.{user_id}",
+        "date": f"eq.{today.isoformat()}"
+    }
+    res_today_attendance = requests.get(f"{SUPABASE_URL}/rest/v1/attendances", headers=headers, params=today_attendance_params)
+    if res_today_attendance.status_code == 200 and res_today_attendance.json():
+        today_record = res_today_attendance.json()[0]
+        if today_record.get('check_in_time'):
+            current_check_in_time = datetime.strptime(today_record['check_in_time'], '%H:%M:%S').strftime('%I:%M %p')
+        if today_record.get('check_out_time'):
+            current_check_out_time = datetime.strptime(today_record['check_out_time'], '%H:%M:%S').strftime('%I:%M %p')
+    # === [추가된 부분 끝] ===
 
     # 1. 오늘 날짜의 출근/퇴근 기록 가져오기 (출근/퇴근 버튼 표시용)
     kst_timezone = pytz.timezone('Asia/Seoul')
@@ -337,7 +239,7 @@ def employee_dashboard():
                     # 현재 근태 시스템이 24시간을 넘기는 근무를 한 날짜에 허용하는지 확인 필요.
                     # 만약 자정을 넘어가더라도 하루에만 기록된다면 아래 로직을 사용합니다.
                     if dt_out_combined < dt_in_combined:
-                         dt_out_combined += timedelta(days=1)
+                        dt_out_combined += timedelta(days=1)
 
 
                     duration = dt_out_combined - dt_in_combined
@@ -369,11 +271,22 @@ def employee_dashboard():
         import traceback
         traceback.print_exc()
 
+    # user 정보를 하나로 합치는 부분 추가
+    # user_info는 Supabase에서 가져온 데이터
+    # session['user']에는 이름, role, id가 있음
+    full_user_info = {
+        'name': session['user']['name'],
+        'yearly_leave': yearly_leave,
+        'monthly_leave': monthly_leave,
+        'remaining_total': remaining_total,
+        # 필요한 다른 정보도 추가할 수 있습니다.
+    }
+
     return render_template(
-        'employee_dashboard.html',
-        user=session['user'],
+        'main_dashboard.html',
+        user=full_user_info, # 합쳐진 'full_user_info'를 'user' 변수로 전달합니다.
         vacations=vacations,
-        yearly_leave=yearly_leave,
+        yearly_leave=yearly_leave, # 'user' 변수에 포함되었으므로 삭제 가능 (선택 사항)
         monthly_leave=monthly_leave,
         remaining_total=remaining_total,
         pending_count=pending_count,
@@ -381,7 +294,7 @@ def employee_dashboard():
         rejected_count=rejected_count,
         current_check_in_time=current_check_in_time,
         current_check_out_time=current_check_out_time,
-        attendance_events=attendance_events # 이 리스트를 템플릿으로 전달
+        attendance_events=attendance_events
     )
 
 # ✅ 관리자용 대시보드
@@ -603,6 +516,309 @@ def admin_dashboard():
         completed_count=completed_count,
         all_attendance_records=all_attendance_records,
         all_users=employee_users # all_users 대신 employee_users 사용 (관리자 제외된 목록)
+    )
+
+# ✅ 휴가 현황 캘린더
+@app.route('/vacation_calendar')
+def vacation_calendar():
+    if 'user' not in session or session['user']['role'] != 'employee':
+        flash("직원 대시보드 접근 권한이 없습니다.", "danger")
+        return redirect(url_for('login'))
+        
+    user_id = session['user']['id']
+    
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}"
+    }
+    
+    # 1. 로그인한 사용자 정보 가져오기 (사이드바에 필요)
+    user_res = requests.get(
+        f"{SUPABASE_URL}/rest/v1/users?id=eq.{user_id}&select=name,yearly_leave,monthly_leave",
+        headers=headers
+    )
+    if user_res.status_code != 200 or not user_res.json():
+        flash("사용자 정보 조회 실패", "danger")
+        return redirect(url_for('login'))
+    user_info = user_res.json()[0]
+    
+    # 2. 로그인한 사용자의 오늘 출퇴근 기록 가져오기 (사이드바에 필요)
+    kst_timezone = pytz.timezone('Asia/Seoul')
+    today = datetime.now(kst_timezone).date()
+    current_check_in_time = None
+    current_check_out_time = None
+    today_attendance_params = {
+        "user_id": f"eq.{user_id}",
+        "date": f"eq.{today.isoformat()}"
+    }
+    res_today_attendance = requests.get(f"{SUPABASE_URL}/rest/v1/attendances", headers=headers, params=today_attendance_params)
+    if res_today_attendance.status_code == 200 and res_today_attendance.json():
+        today_record = res_today_attendance.json()[0]
+        if today_record.get('check_in_time'):
+            current_check_in_time = datetime.strptime(today_record['check_in_time'], '%H:%M:%S').strftime('%I:%M %p')
+        if today_record.get('check_out_time'):
+            current_check_out_time = datetime.strptime(today_record['check_out_time'], '%H:%M:%S').strftime('%I:%M %p')
+
+    # 3. 모든 직원의 승인된 휴가 기록 가져오기 (달력에 필요)
+    vacation_params = {
+        "status": "eq.approved",
+        "select": "*,users(name),vacation_types(type_code)"
+    }
+    vacations_res = requests.get(
+        f"{SUPABASE_URL}/rest/v1/vacations",
+        headers=headers,
+        params=vacation_params
+    )
+    vacations_data = vacations_res.json() if vacations_res.status_code == 200 else []
+    
+    # 4. FullCalendar에 맞게 데이터 가공
+    events = []
+    for vacation in vacations_data:
+        end_date = datetime.strptime(vacation['end_date'], '%Y-%m-%d').date()
+        end_date_adjusted = end_date + timedelta(days=1)
+        
+        events.append({
+            'title': f"{vacation['users']['name']} ({vacation['vacation_types']['type_code']})",
+            'start': vacation['start_date'],
+            'end': end_date_adjusted.isoformat(),
+            'allDay': True,
+            'type_code': vacation['vacation_types']['type_code']
+        })
+    
+    return render_template(
+        'vacation_calendar.html',
+        # FullCalendar에 넘겨줄 부서 전체 휴가 데이터
+        vacations=events, 
+        # base.html (사이드바)에 넘겨줄 사용자 정보
+        user=user_info,
+        current_check_in_time=current_check_in_time,
+        current_check_out_time=current_check_out_time
+    )
+
+# attendance 라우트 (출퇴근 기록 처리)
+@app.route('/attendance', methods=['POST'])
+def attendance():
+    user = session.get('user')
+    if not user:
+        flash("로그인이 필요합니다.", "danger")
+        return redirect(url_for('login'))
+
+    user_id = user['id']
+    employee_name = user.get('name') # 세션에서 직원 이름 가져오기
+    record_type = request.form.get('type') # '출근' 또는 '퇴근'
+    
+    # KST (한국 표준시) 시간대를 명시적으로 지정하여 현재 시간과 날짜를 가져옵니다.
+    kst_timezone = pytz.timezone('Asia/Seoul')
+    now_kst = datetime.now(kst_timezone) # <-- 이 줄을 추가합니다.
+    today_date_str = now_kst.strftime('%Y-%m-%d') # <-- now 대신 now_kst 사용
+    current_time_str = now_kst.strftime('%H:%M:%S') # <-- now 대신 now_kst 사용
+
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        # Supabase에 오늘 날짜의 기록을 조회할 때 KST 기준 날짜 사용
+        existing_attendance_params = {
+            "user_id": f"eq.{user_id}",
+            "date": f"eq.{today_date_str}" # <-- KST 기준 날짜 사용
+        }
+        res_check_exist = requests.get(
+            f"{SUPABASE_URL}/rest/v1/attendances",
+            headers=headers,
+            params=existing_attendance_params
+        )
+        existing_records = res_check_exist.json() if res_check_exist.status_code == 200 else []
+        current_day_attendance = existing_records[0] if existing_records else None
+
+        if record_type == '출근':
+            if current_day_attendance and current_day_attendance.get('check_in_time'):
+                # 오늘 날짜의 기록이 있고 이미 출근 시간이 있다면
+                flash("이미 출근 처리되었습니다.", "info")
+            else:
+                if current_day_attendance:
+                    # 오늘 날짜의 기록은 있지만 출근 시간이 없다면 (퇴근만 있거나, 혹은 Supabase 제약 조건에 의해 빈 레코드가 생성된 경우)
+                    data_to_update = {
+                        'check_in_time': current_time_str,
+                        'employee_name': employee_name # <-- 여기에 직원 이름 추가
+                        }
+                    res = requests.patch(
+                        f"{SUPABASE_URL}/rest/v1/attendances?id=eq.{current_day_attendance['id']}",
+                        headers=headers,
+                        json=data_to_update
+                    )
+                    if res.status_code == 200 or res.status_code == 204:
+                        flash(f"출근 처리되었습니다: {now_kst.strftime('%I:%M %p')}", "success") # <-- now_kst 사용 및 AM/PM 포맷
+                    else:
+                        raise Exception(f"출근 기록 업데이트 실패: {res.status_code} - {res.text}")
+                else:
+                    # 오늘 날짜의 기록이 전혀 없다면 새로운 기록 생성
+                    data_to_send = {
+                        'user_id': user_id,
+                        'date': today_date_str,
+                        'check_in_time': current_time_str,
+                        'check_out_time': None,
+                        'employee_name': employee_name
+                    }
+                    res = requests.post(
+                        f"{SUPABASE_URL}/rest/v1/attendances",
+                        headers=headers,
+                        json=data_to_send
+                    )
+                    if res.status_code == 201:
+                        flash(f"출근 처리되었습니다: {now_kst.strftime('%I:%M %p')}", "success") # <-- now_kst 사용 및 AM/PM 포맷
+                    else:
+                        raise Exception(f"출근 기록 생성 실패: {res.status_code} - {res.text}")
+
+        elif record_type == '퇴근':
+            if not current_day_attendance or not current_day_attendance.get('check_in_time'):
+                flash("출근 기록이 먼저 필요합니다.", "warning")
+            elif current_day_attendance.get('check_out_time'):
+                flash("이미 퇴근 처리되었습니다.", "info")
+            else:
+                if current_day_attendance:
+                    data_to_update = {'check_out_time': current_time_str}
+                    res = requests.patch(
+                        f"{SUPABASE_URL}/rest/v1/attendances?id=eq.{current_day_attendance['id']}",
+                        headers=headers,
+                        json=data_to_update
+                    )
+                    if res.status_code == 200 or res.status_code == 204:
+                        flash("오늘 하루도 수고하셨습니다.", "success")
+                    else:
+                        raise Exception(f"퇴근 기록 업데이트 실패: {res.status_code} - {res.text}")
+                else:
+                    flash("출근 기록이 없어 퇴근 처리가 불가능합니다.", "warning")
+
+    except requests.exceptions.RequestException as e:
+        print(f"Supabase 요청 오류: {e}")
+        flash("네트워크 통신 중 오류가 발생했습니다.", "danger")
+    except Exception as e:
+        print(f"근태 처리 중 오류가 발생했습니다: {e}")
+        import traceback
+        traceback.print_exc()
+        flash("근태 처리 중 알 수 없는 오류가 발생했습니다.", "danger")
+
+    return redirect(url_for('main_dashboard'))
+
+# MY 근태현황 페이지
+@app.route('/my-attendance')
+def my_attendance():
+    if 'user' not in session or session['user']['role'] != 'employee':
+        flash("직원 대시보드 접근 권한이 없습니다.", "danger")
+        return redirect(url_for('login'))
+
+    user_id = session['user']['id']
+
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}"
+    }
+
+        # === [추가된 부분 시작] 출퇴근 기록 가져오기 (사이드바 버튼용) ===
+    kst_timezone = pytz.timezone('Asia/Seoul')
+    today = datetime.now(kst_timezone).date()
+    current_check_in_time = None
+    current_check_out_time = None
+    today_attendance_params = {
+        "user_id": f"eq.{user_id}",
+        "date": f"eq.{today.isoformat()}"
+    }
+    res_today_attendance = requests.get(f"{SUPABASE_URL}/rest/v1/attendances", headers=headers, params=today_attendance_params)
+    if res_today_attendance.status_code == 200 and res_today_attendance.json():
+        today_record = res_today_attendance.json()[0]
+        if today_record.get('check_in_time'):
+            current_check_in_time = datetime.strptime(today_record['check_in_time'], '%H:%M:%S').strftime('%I:%M %p')
+        if today_record.get('check_out_time'):
+            current_check_out_time = datetime.strptime(today_record['check_out_time'], '%H:%M:%S').strftime('%I:%M %p')
+    # === [추가된 부분 끝] ===
+
+    # base.html에 필요한 사용자 정보 전달
+    user_res = requests.get(
+        f"{SUPABASE_URL}/rest/v1/users?id=eq.{user_id}&select=name,yearly_leave,monthly_leave",
+        headers=headers
+    )
+    if user_res.status_code != 200 or not user_res.json():
+        flash("사용자 정보 조회 실패", "danger")
+        return redirect(url_for('login'))
+    
+    user_info = user_res.json()[0]
+    
+    # 7. MY 근태현황 데이터 가져오기
+    attendance_events = []
+    try:
+        all_attendance_params = {
+            "user_id": f"eq.{user_id}",
+            "order": "date.desc"
+        }
+        all_attendance_res = requests.get(
+            f"{SUPABASE_URL}/rest/v1/attendances",
+            headers=headers,
+            params=all_attendance_params
+        )
+
+        if all_attendance_res.status_code == 200:
+            raw_records = all_attendance_res.json()
+            for record in raw_records:
+                record_date_str = record.get('date')
+                check_in_time_raw = record.get('check_in_time')
+                check_out_time_raw = record.get('check_out_time')
+                check_in_display = 'N/A'
+                check_out_display = 'N/A'
+                work_duration = '-'
+
+                dt_in_combined = None
+                dt_out_combined = None
+
+                if check_in_time_raw and record_date_str:
+                    try:
+                        dt_in_combined = datetime.strptime(f"{record_date_str} {check_in_time_raw}", '%Y-%m-%d %H:%M:%S')
+                        check_in_display = dt_in_combined.strftime('%I:%M %p')
+                    except ValueError:
+                        pass
+                
+                if check_out_time_raw and record_date_str:
+                    try:
+                        dt_out_combined = datetime.strptime(f"{record_date_str} {check_out_time_raw}", '%Y-%m-%d %H:%M:%S')
+                        check_out_display = dt_out_combined.strftime('%I:%M %p')
+                    except ValueError:
+                        pass
+                
+                if dt_in_combined and dt_out_combined:
+                    if dt_out_combined < dt_in_combined:
+                        dt_out_combined += timedelta(days=1)
+                    duration = dt_out_combined - dt_in_combined
+                    total_seconds = int(duration.total_seconds())
+                    hours = total_seconds // 3600
+                    minutes = (total_seconds % 3600) // 60
+                    if hours < 0:
+                        work_duration = "오류"
+                    else:
+                        work_duration = f"{hours}시간 {minutes}분"
+                elif check_in_time_raw and not check_out_time_raw:
+                    work_duration = "근무 중"
+
+                attendance_events.append({
+                    'date': record_date_str,
+                    'check_in': check_in_display,
+                    'check_out': check_out_display,
+                    'work_duration': work_duration
+                })
+    except Exception as e:
+        print(f"MY 근태현황 데이터 처리 중 오류 발생: {e}")
+        import traceback
+        traceback.print_exc()
+
+    return render_template(
+        'my_attendance.html',
+        user=user_info,
+        attendance_events=attendance_events,
+        # === [추가된 부분] ===
+        current_check_in_time=current_check_in_time,
+        current_check_out_time=current_check_out_time
+        # === [추가된 부분 끝] ===
     )
 
 @app.route("/monthly-stats")
@@ -1105,9 +1321,60 @@ def used_vacations_page():
 
     return render_template('used_vacations.html', used_vacations=used_vacations)
 
-# ✅ 휴가 신청 처리
-from datetime import datetime, timedelta
 
+# 휴가 신청 폼 페이지를 보여주는 엔드포인트
+@app.route('/vacation/request')
+def vacation_request():
+    if 'user' not in session or session['user']['role'] != 'employee':
+        flash("직원 대시보드 접근 권한이 없습니다.", "danger")
+        return redirect(url_for('login'))
+
+    user_id = session['user']['id']
+
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}"
+    }
+
+    # === [추가된 부분 시작] 출퇴근 기록 가져오기 (사이드바 버튼용) ===
+    kst_timezone = pytz.timezone('Asia/Seoul')
+    today = datetime.now(kst_timezone).date()
+    current_check_in_time = None
+    current_check_out_time = None
+    today_attendance_params = {
+        "user_id": f"eq.{user_id}",
+        "date": f"eq.{today.isoformat()}"
+    }
+    res_today_attendance = requests.get(f"{SUPABASE_URL}/rest/v1/attendances", headers=headers, params=today_attendance_params)
+    if res_today_attendance.status_code == 200 and res_today_attendance.json():
+        today_record = res_today_attendance.json()[0]
+        if today_record.get('check_in_time'):
+            current_check_in_time = datetime.strptime(today_record['check_in_time'], '%H:%M:%S').strftime('%I:%M %p')
+        if today_record.get('check_out_time'):
+            current_check_out_time = datetime.strptime(today_record['check_out_time'], '%H:%M:%S').strftime('%I:%M %p')
+    # === [추가된 부분 끝] ===
+
+    # base.html에 필요한 사용자 정보 전달
+    user_res = requests.get(
+        f"{SUPABASE_URL}/rest/v1/users?id=eq.{user_id}&select=name,yearly_leave,monthly_leave",
+        headers=headers
+    )
+    if user_res.status_code != 200 or not user_res.json():
+        flash("사용자 정보 조회 실패", "danger")
+        return redirect(url_for('login'))
+    
+    user_info = user_res.json()[0]
+
+    return render_template(
+        'vacation_request.html', 
+        user=user_info,
+        # === [추가된 부분] ===
+        current_check_in_time=current_check_in_time,
+        current_check_out_time=current_check_out_time
+        # === [추가된 부분 끝] ===
+        )
+
+# ✅ 휴가 신청 처리
 @app.route('/request-vacation', methods=['POST'])
 def request_vacation():
     # user = None  # 이 줄을 제거합니다.
@@ -1117,13 +1384,13 @@ def request_vacation():
     # 1. user 객체가 None인지 확인하고, None이면 바로 로그인 페이지로 리다이렉트
     if user is None: # 명시적으로 'is None'을 사용합니다.
         flash("⛔ 사용자 정보를 불러오지 못했습니다. 다시 로그인해 주세요.", "danger")
-        return redirect('/login')
+        return redirect(url_for('login')) # '/login' -> url_for('login')으로 변경
 
     # 2. user 객체가 딕셔너리 타입인지 확인 (세션 데이터의 유효성 검사)
     if not isinstance(user, dict):
         print(f"ERROR: User object in session is not a dictionary: {user}, type: {type(user)}")
         flash("세션 사용자 정보가 올바르지 않습니다. 다시 로그인해주세요.", "danger")
-        return redirect('/login')
+        return redirect(url_for('login')) # '/login' -> url_for('login')으로 변경
 
     # 3. user_id와 employee_name을 안전하게 가져옵니다.
     # .get() 메서드를 사용하여 키가 없어도 오류가 아닌 None을 반환하도록 합니다.
@@ -1134,25 +1401,25 @@ def request_vacation():
     if user_id is None or employee_name is None:
         print(f"ERROR: Missing user_id ({user_id}) or employee_name ({employee_name}) in session user data: {user}")
         flash("사용자 정보가 불완전합니다. 다시 로그인해주세요.", "danger")
-        return redirect('/login')
+        return redirect(url_for('login')) # '/login' -> url_for('login')으로 변경
 
     start_date_str = request.form.get('start_date')
     end_date_str = request.form.get('end_date')
     leave_type = request.form.get('type') # full_day, half_day_am 등
     deduct_from_type = request.form.get('deduct_from_type') # yearly, monthly
 
-    print(f"DEBUG: base_leave_type: {deduct_from_type}, granularity_type: {leave_type}") # 변수명 통일 (base_leave_type_str -> deduct_from_type)
+    print(f"DEBUG: base_leave_type: {deduct_from_type}, granularity_type: {leave_type}")
 
     try:
         start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
         end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
     except ValueError:
         flash("❌ 날짜 형식이 잘못되었습니다.", "danger")
-        return redirect('/employee')
+        return redirect(url_for('main_dashboard')) # '/dashboard' -> url_for('main_dashboard')으로 변경
 
     if start_date > end_date:
         flash("❌ 시작일은 종료일보다 빠를 수 없습니다.", "warning")
-        return redirect('/employee')
+        return redirect(url_for('main_dashboard')) # '/dashboard' -> url_for('main_dashboard')으로 변경
 
     headers = {
         "apikey": SUPABASE_KEY,
@@ -1171,67 +1438,64 @@ def request_vacation():
         exist_end = datetime.strptime(vac["end_date"], "%Y-%m-%d").date()
         if start_date <= exist_end and end_date >= exist_start:
             flash(f"⚠️ 해당 기간({vac['start_date']}~{vac['end_date']})에 이미 신청된 휴가가 있습니다.", "warning")
-            return redirect('/employee')
+            return redirect(url_for('main_dashboard')) # '/dashboard' -> url_for('main_dashboard')으로 변경
 
-    # 사용 일수 계산 및 Supabase에 저장할 'type'과 'deduct_from_type' 결정
+    # 사용 일수 계산
     used_days = 0.0
-    type_to_save_in_supabase = "" # Supabase 'type' 컬럼에 저장될 값 (예: "종일", "반차-오전")
-    deduct_from_type_to_save = "" # Supabase 'deduct_from_type' 컬럼에 저장될 값 (예: "yearly", "monthly")
+    type_to_save_in_supabase = ""
+    deduct_from_type_to_save = ""
 
-    # deduct_from_type에 따라 deduct_from_type_to_save를 설정
-    if deduct_from_type == 'yearly': # base_leave_type_str 대신 deduct_from_type 사용
+    if deduct_from_type == 'yearly':
         deduct_from_type_to_save = "yearly"
-    elif deduct_from_type == 'monthly': # base_leave_type_str 대신 deduct_from_type 사용
+    elif deduct_from_type == 'monthly':
         deduct_from_type_to_save = "monthly"
     else:
         flash("❌ 유효한 휴가 유형(연차/월차)을 선택해 주세요.", "danger")
-        return redirect('/employee')
+        return redirect(url_for('main_dashboard')) # '/dashboard' -> url_for('main_dashboard')으로 변경
 
-    # leave_granularity_type에 따라 used_days와 type_to_save_in_supabase를 설정
-    if leave_type == 'full_day': # leave_granularity_type 대신 leave_type 사용
+    if leave_type == 'full_day':
         used_days = (end_date - start_date).days + 1
-        type_to_save_in_supabase = "종일" # 또는 "연차" / "월차"로 저장해도 됩니다.
+        type_to_save_in_supabase = "종일"
         if used_days <= 0:
             flash("❌ 종일 휴가는 최소 하루 이상이어야 합니다.", "danger")
-            return redirect('/employee')
-    elif leave_type == 'half_day_am': # leave_granularity_type 대신 leave_type 사용
+            return redirect(url_for('main_dashboard')) # '/dashboard' -> url_for('main_dashboard')으로 변경
+    elif leave_type == 'half_day_am':
         used_days = 0.5
         type_to_save_in_supabase = "반차-오전"
         if start_date != end_date:
             flash("❌ 반차는 하루만 선택할 수 있습니다.", "danger")
-            return redirect('/employee')
-    elif leave_type == 'half_day_pm': # leave_granularity_type 대신 leave_type 사용
+            return redirect(url_for('main_dashboard')) # '/dashboard' -> url_for('main_dashboard')으로 변경
+    elif leave_type == 'half_day_pm':
         used_days = 0.5
         type_to_save_in_supabase = "반차-오후"
         if start_date != end_date:
             flash("❌ 반차는 하루만 선택할 수 있습니다.", "danger")
-            return redirect('/employee')
-    elif leave_type == 'quarter_day_am': # leave_granularity_type 대신 leave_type 사용
+            return redirect(url_for('main_dashboard')) # '/dashboard' -> url_for('main_dashboard')으로 변경
+    elif leave_type == 'quarter_day_am':
         used_days = 0.25
         type_to_save_in_supabase = "반반차-오전"
         if start_date != end_date:
             flash("❌ 반반차는 하루만 선택할 수 있습니다.", "danger")
-            return redirect('/employee')
-    elif leave_type == 'quarter_day_pm': # leave_granularity_type 대신 leave_type 사용
+            return redirect(url_for('main_dashboard')) # '/dashboard' -> url_for('main_dashboard')으로 변경
+    elif leave_type == 'quarter_day_pm':
         used_days = 0.25
         type_to_save_in_supabase = "반반차-오후"
         if start_date != end_date:
             flash("❌ 반반차는 하루만 선택할 수 있습니다.", "danger")
-            return redirect('/employee')
+            return redirect(url_for('main_dashboard')) # '/dashboard' -> url_for('main_dashboard')으로 변경
     else:
         flash("❌ 유효한 휴가 종류(종일/반차/반반차)를 선택해 주세요.", "danger")
-        return redirect('/employee')
+        return redirect(url_for('main_dashboard')) # '/dashboard' -> url_for('main_dashboard')으로 변경
 
     # 사용자 정보 및 총 잔여 휴가 계산 (기존과 동일)
     res_user = requests.get(f"{SUPABASE_URL}/rest/v1/users?id=eq.{user_id}", headers=headers)
     if res_user.status_code != 200 or not res_user.json():
         flash("❌ 사용자 정보를 불러올 수 없습니다.", "danger")
-        return redirect('/employee')
+        return redirect(url_for('main_dashboard')) # '/dashboard' -> url_for('main_dashboard')으로 변경
 
-    user_data_from_db = res_user.json()[0] # user 변수명 충돌 방지를 위해 변경
+    user_data_from_db = res_user.json()[0]
     auto_yearly_leave, auto_monthly_leave = calculate_leave(user_data_from_db.get("join_date"))
 
-    # 현재 사용된 휴가 계산 (Supabase 기록에서 deduct_from_type을 활용)
     res_vac = requests.get(
         f"{SUPABASE_URL}/rest/v1/vacations?user_id=eq.{user_id}&status=eq.approved",
         headers=headers
@@ -1254,8 +1518,6 @@ def request_vacation():
         elif deduction_source == "monthly":
             current_used_monthly += val
         else:
-            # 이 부분은 'deduct_from_type'이 없는 (레거시) 데이터 처리 방식입니다.
-            # 당신의 과거 데이터가 어떻게 휴가 유형을 저장했는지에 따라 이 로직을 조정해야 합니다.
             if v.get("type") == "연차" or v.get("type", "").startswith(("반차", "반반차")): 
                 current_used_yearly += val
             elif v.get("type") == "월차":
@@ -1274,43 +1536,59 @@ def request_vacation():
         sufficient_leave = False
 
     if not sufficient_leave:
-        return redirect('/employee')
+        return redirect(url_for('main_dashboard')) # '/dashboard' -> url_for('main_dashboard')으로 변경
 
     # Supabase에 휴가 신청 데이터 저장
     headers["Content-Type"] = "application/json"
     data = {
         "user_id": user_id,
         'employee_name': employee_name,
-        "type": type_to_save_in_supabase, # 이제는 세부 종류 (예: "종일", "반차-오전")가 저장됩니다.
+        "type": type_to_save_in_supabase,
         "start_date": start_date_str,
         "end_date": end_date_str,
         "used_days": used_days,
         "status": "pending",
-        "deduct_from_type": deduct_from_type_to_save # "yearly" 또는 "monthly"가 명확히 저장됩니다.
+        "deduct_from_type": deduct_from_type_to_save
     }
 
     res_post = requests.post(f"{SUPABASE_URL}/rest/v1/vacations", headers=headers, json=data)
     if res_post.status_code == 201:
         flash("✅ 휴가 신청이 완료되었습니다.", "success")
-        return redirect('/employee')
+        return redirect(url_for('main_dashboard')) # '/dashboard' -> url_for('main_dashboard')으로 변경
     else:
         flash("❌ 신청 실패: 관리자에게 문의해 주세요.", "danger")
         print(f"Supabase Post Error: {res_post.status_code}, {res_post.text}")
-        return redirect('/employee')
+        return redirect(url_for('main_dashboard')) # '/dashboard' -> url_for('main_dashboard')으로 변경
 
 @app.route('/vacation-events')
 def get_vacation_events():
+    """
+    FullCalendar에 표시할 모든 직원의 승인된 휴가 이벤트를 가져옵니다.
+    Supabase에서 'status'가 'approved'인 휴가 기록만 필터링합니다.
+    """
     headers = {
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}"
     }
 
-    # 모든 휴가 기록 가져오기 (status 무관)
-    res = requests.get(
-        f"{SUPABASE_URL}/rest/v1/vacations?select=user_id,type,deduct_from_type,status,start_date,end_date,users(name),employee_name",
-        headers=headers
-    )
-    vacations = res.json() if res.status_code == 200 else []
+    # ✅ 수정: 승인된 휴가 기록만 가져오도록 status 필터 추가
+    # ✅ 수정: vacation_types 조인 제거 및 기존 로직 재활용
+    params = {
+        "status": "eq.approved",
+        "select": "user_id,type,deduct_from_type,status,start_date,end_date,users(name),employee_name"
+    }
+
+    try:
+        res = requests.get(
+            f"{SUPABASE_URL}/rest/v1/vacations",
+            headers=headers,
+            params=params
+        )
+        res.raise_for_status()  # HTTP 오류 발생 시 예외 발생
+        vacations = res.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching vacation events: {e}")
+        return jsonify({'error': 'Failed to fetch vacation events'}), 500
 
     events = []
     for v in vacations:
@@ -1357,24 +1635,41 @@ def get_vacation_events():
             'classNames': event_class_names,
             'allDay': True
         })
+        
     return jsonify(events)
 
+
 @app.route('/my-vacations-history')
-@login_required
 def my_vacations_history():
-    user_id = session.get('user_id')
+    """
+    현재 로그인된 사용자의 휴가 신청 내역을 가져옵니다.
+    """
+    if 'user' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    user_id = session['user']['id']
     headers = {
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}"
     }
     
-    # 현재 로그인된 사용자의 휴가 신청 내역을 가져옵니다.
-    # 'vacations' 테이블에서 'user_id'가 일치하는 모든 레코드를 가져옵니다.
-    res = requests.get(
-        f"{SUPABASE_URL}/rest/v1/vacations?user_id=eq.{user_id}",
-        headers=headers
-    )
-    vacations = res.json() if res.status_code == 200 else []
+    # ✅ 수정: vacation_types 조인 제거 및 기존 로직 재활용
+    params = {
+        "user_id": f"eq.{user_id}",
+        "select": "user_id,type,deduct_from_type,status,start_date,end_date,requested_at,used_days"
+    }
+
+    try:
+        res = requests.get(
+            f"{SUPABASE_URL}/rest/v1/vacations",
+            headers=headers,
+            params=params
+        )
+        res.raise_for_status()
+        vacations = res.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching my vacation history: {e}")
+        return jsonify({'error': 'Failed to fetch vacation history'}), 500
     
     # 'type_kor' 필드를 추가하여 한국어 표기를 프론트엔드로 전달
     for v in vacations:
@@ -1389,7 +1684,7 @@ def my_vacations_history():
             v['type_kor'] = '반반차(오전)'
         elif v['type'] == 'quarter_day_pm':
             v['type_kor'] = '반반차(오후)'
-
+    
     return jsonify(vacations)
 
 # ✅ 앱 실행

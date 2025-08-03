@@ -1,0 +1,91 @@
+        /* MY 근태현황CSS */
+        .attendance-status-table-container {
+            /* 테이블이 너무 길어질 경우 가로 스크롤을 가능하게 합니다. */
+            overflow-x: auto;
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+            border: 1px solid #e9ecef;
+        }
+
+        .attendance-status-table {
+            width: 100%;
+            margin-bottom: 0;
+            color: #495057;
+            border-collapse: collapse; /* 테이블 테두리 병합 */
+        }
+
+        .attendance-status-table thead {
+            background-color: #e9ecef;
+            border-bottom: 2px solid #dee2e6;
+        }
+
+        .attendance-status-table th {
+            padding: 1rem;
+            text-align: center;
+            font-weight: 600;
+            border-top: none;
+        }
+
+        .attendance-status-table td {
+            padding: 1rem;
+            text-align: center;
+            vertical-align: middle;
+            border-top: 1px solid #e9ecef;
+        }
+        
+        .attendance-status-table tbody tr:hover {
+            background-color: #f1f3f5; /* 마우스 호버 시 배경색 변경 */
+        }
+
+        .attendance-status-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* 기록이 없을 때 메시지 스타일 */
+        .attendance-status-table td[colspan="4"] {
+            font-style: italic;
+            color: #868e96;
+            padding: 2rem;
+        }
+
+        /* 세련된 월별 네비게이션 버튼 스타일 */
+        .month-nav-container {
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .month-nav-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 30px;
+            height: 30px;
+            padding: 0;
+            border-radius: 50%; /* 버튼을 원형으로 만듭니다 */
+            background-color: transparent;
+            border: 1px solid #dee2e6;
+            color: #6c757d;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .month-nav-btn:hover {
+            background-color: #e9ecef;
+            border-color: #ced4da;
+            color: #495057;
+        }
+
+        .current-month-display {
+            font-weight: 700;
+            font-size: 20px; /* 폰트 크기를 1.5rem으로 조정 */
+            color: #343a40;
+            margin: 0 1rem;
+        }
+
+        /* SVG 아이콘 크기 조정 */
+        .month-nav-btn svg {
+            width: 20px;
+            height: 20px;
+        }

@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}MY 근태현황 | 직원 대시보드{% endblock %}
+
+{% block content %}
+    <div class="dynamic-content-area">
+        <h4><i class="fas fa-calendar-alt me-2"></i> MY 근태현황</h4>
+        <!-- 월별 네비게이션 버튼 추가 -->
+        <div class="month-nav-container">
+            <button id="prevMonthBtn" class="month-nav-btn me-2">
+                <!-- 이전 달을 나타내는 SVG 아이콘 -->
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-chevron-left" viewBox="0 0 16 16">
+                    <path fill-rule="evenodd" d="M11.354 1.646a.5.5 0 0 1 0 .708L5.707 8l5.647 5.646a.5.5 0 0 1-.708.708l-6-6a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0z"/>
+                </svg>
+            </button>
+            <span id="currentMonthDisplay" class="current-month-display"></span>
+            <button id="nextMonthBtn" class="month-nav-btn ms-2">
+                <!-- 다음 달을 나타내는 SVG 아이콘 -->
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-chevron-right" viewBox="0 0 16 16">
+                    <path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/>
+                </svg>
+            </button>
+        </div>
+        <div class="attendance-status-table-container">
+            <table class="attendance-status-table">
+                <thead>
+                    <tr>
+                        <th>날짜</th>
+                        <th>출근</th>
+                        <th>퇴근</th>
+                        <th>근무시간</th>
+                    </tr>
+                </thead>
+                <tbody id="attendance-table-body">
+                    {% if attendance_events %}
+                        {% for event in attendance_events %}
+                        <tr data-date="{{ event.date }}">
+                            <td>{{ event.date }}</td>
+                            <td>{{ event.check_in }}</td>
+                            <td>{{ event.check_out }}</td>
+                            <td>{{ event.work_duration }}</td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="4">출퇴근 기록이 없습니다.</td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const currentMonthDisplay = document.getElementById('currentMonthDisplay');
+            const prevMonthBtn = document.getElementById('prevMonthBtn');
+            const nextMonthBtn = document.getElementById('nextMonthBtn');
+            const tableBody = document.getElementById('attendance-table-body');
+            const rows = tableBody.querySelectorAll('tr[data-date]');
+
+            let allMonths = [];
+            const months = new Set();
+            rows.forEach(row => {
+                const date = row.dataset.date;
+                if (date) {
+                    const month = date.substring(0, 7);
+                    months.add(month);
+                }
+            });
+            allMonths = Array.from(months).sort();
+            let currentMonthIndex = allMonths.length > 0 ? allMonths.length - 1 : 0;
+
+            function updateMonthDisplay() {
+                if (allMonths.length > 0) {
+                    currentMonthDisplay.textContent = allMonths[currentMonthIndex];
+                    filterTableByMonth(allMonths[currentMonthIndex]);
+                } else {
+                    currentMonthDisplay.textContent = '기록 없음';
+                    filterTableByMonth('all');
+                }
+            }
+
+            function filterTableByMonth(month) {
+                rows.forEach(row => {
+                    const date = row.dataset.date;
+                    if (date && date.startsWith(month)) {
+                        row.style.display = '';
+                    } else {
+                        row.style.display = 'none';
+                    }
+                });
+            }
+
+            prevMonthBtn.addEventListener('click', function() {
+                if (currentMonthIndex > 0) {
+                    currentMonthIndex--;
+                    updateMonthDisplay();
+                }
+            });
+
+            nextMonthBtn.addEventListener('click', function() {
+                if (currentMonthIndex < allMonths.length - 1) {
+                    currentMonthIndex++;
+                    updateMonthDisplay();
+                }
+            });
+
+            // 초기 로드 시 가장 최근 월 표시
+            updateMonthDisplay();
+        });
+    </script>
+    {% endblock %}
