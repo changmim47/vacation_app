@@ -1,0 +1,43 @@
+{# templates/create_notice.html #}
+{% extends "layout.html" %}
+
+{% block title %}공지사항 작성{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto bg-white p-6 rounded shadow">
+  <h2 class="text-2xl font-semibold mb-4">📣 공지사항 작성</h2>
+  <form action="{{ url_for('create_notice') }}" method="POST" enctype="multipart/form-data" class="space-y-6">
+    <div>
+      <label for="title" class="block text-sm font-medium mb-1">제목</label>
+      <input type="text" name="title" id="title" required
+             class="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+    </div>
+    <div>
+      <label for="content" class="block text-sm font-medium mb-1">내용</label>
+      <textarea name="content" id="content" rows="8" required
+                class="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+    </div>
+    <div>
+      <label for="attachments" class="block text-sm font-medium mb-1">첨부파일</label>
+      <input type="file" name="attachments" id="attachments" multiple
+             class="block w-full text-sm text-gray-600
+                    file:mr-4 file:py-2 file:px-4
+                    file:rounded file:border-0
+                    file:text-sm file:font-semibold
+                    file:bg-gray-100 file:text-gray-700
+                    hover:file:bg-gray-200" />
+      <p class="text-xs text-gray-500 mt-1">여러 파일을 선택하려면 Ctrl (Cmd) 키를 누른 채로 클릭하세요.</p>
+    </div>
+    <div class="flex space-x-2">
+      <button type="submit"
+              class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition">
+        저장
+      </button>
+      <a href="{{ url_for('manage_notices') }}"
+         class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition">
+        취소
+      </a>
+    </div>
+  </form>
+</div>
+{% endblock %}

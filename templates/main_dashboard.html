@@ -98,15 +98,23 @@
             </div>
         </div>
 
-        <div class="card">
-            <div class="card-header">
-                <h5><i class="material-icons-outlined">campaign</i>공지사항</h5>
-                <a href="#">더보기 ></a>
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="material-icons-outlined">campaign</i> 공지사항</h5>
+                    <a href="{{ url_for('notices_page') }}">더보기 ></a>
+                </div>
+                <div class="card-body">
+                    <ul id="main-dashboard-notices-list" class="list-group list-group-flush">
+                        <!-- 공지사항 목록이 여기에 동적으로 로드됩니다 -->
+                        <li class="list-group-item text-center text-muted py-3">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">공지사항을 불러오는 중...</p>
+                        </li>
+                    </ul>
+                </div>
             </div>
-            <div class="card-body">
-                <p class="text-center text-muted">준비 중인 기능입니다.</p>
-            </div>
-        </div>
         
         <div class="card my-attendance-status">
             <div class="card-header">
@@ -253,5 +261,69 @@
                 {% endfor %}
             {% endif %}
         {% endwith %}
+
+    document.addEventListener("DOMContentLoaded", function() {
+        const noticesList = document.getElementById('main-dashboard-notices-list');
+
+        // 날짜 포맷 함수 (YYYY-MM-DD 형식)
+        function formatDate(dateString) {
+            try {
+                const dateObj = new Date(dateString);
+                if (isNaN(dateObj.getTime())) {
+                    throw new Error('Invalid date');
+                }
+                const year = dateObj.getFullYear();
+                const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+                const day = String(dateObj.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            } catch (e) {
+                console.error('Invalid date format:', dateString, e);
+                return '날짜 정보 없음';
+            }
+        }
+
+        async function fetchDashboardNotices() {
+            try {
+                const response = await fetch('/api/notices');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const allNotices = await response.json();
+                
+                noticesList.innerHTML = '';
+                
+                if (allNotices.length === 0) {
+                    noticesList.innerHTML = `<li class="list-group-item text-center text-muted py-3">등록된 공지사항이 없습니다.</li>`;
+                } else {
+                    const recentNotices = allNotices.slice(0, 3);
+                    recentNotices.forEach(notice => {
+                        const formattedDate = formatDate(notice.created_at);
+                        const listItem = document.createElement('li');
+                        listItem.className = 'list-group-item d-flex justify-content-between align-items-center py-2 px-0 border-0';
+                        
+                        // JavaScript를 사용하여 URL을 직접 생성하여 오류 방지
+                        const noticeUrl = `/notices?notice_id=${notice.id}`;
+                        
+                        listItem.innerHTML = `
+                        <div class="notice-left d-flex align-items-center text-truncate">
+                            <span class="badge bg-primary me-2">공지</span>
+                            <a href="${noticeUrl}" class="notice-title text-decoration-none text-dark text-truncate" style="max-width: 100%;">
+                                ${notice.title}
+                            </a>
+                        </div>
+                        <small class="text-muted flex-shrink-0 ms-3">${formattedDate}</small>
+                        `;
+                        noticesList.appendChild(listItem);
+                    });
+                }
+            } catch (error) {
+                console.error('Error fetching notices:', error);
+                noticesList.innerHTML = `<li class="list-group-item text-center text-danger py-3">공지사항을 불러오는 데 실패했습니다.</li>`;
+            }
+        }
+
+        fetchDashboardNotices();
+    });
+
 </script>
 {% endblock %}

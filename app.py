@@ -1,17 +1,19 @@
 import os
 from utils import calculate_leave
 from dotenv import load_dotenv
-from flask import Flask, render_template, request, redirect, session, url_for, flash
+from flask import Flask, render_template, request, redirect, session, url_for, flash, json
 from dateutil.relativedelta import relativedelta
 from flask import jsonify
 from datetime import datetime, timedelta
+from dateutil.parser import isoparse, parse
 from collections import defaultdict
 import io
 import pandas as pd
 from flask import send_file
 import requests
 import pytz
-from flask_login import login_required
+import re
+from supabase import create_client
 
 load_dotenv()
 
@@ -22,6 +24,8 @@ print("SECRET_KEY from .env:", os.getenv("SECRET_KEY"))
 # Supabase 정보 입력
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 @app.route('/')
 def home():
@@ -297,44 +301,42 @@ def main_dashboard():
         attendance_events=attendance_events
     )
 
-# ✅ 관리자용 대시보드
+# 1) /admin → /admin/vacation 으로 리다이렉트
 @app.route('/admin')
-# @login_required # 관리자 로그인 필요 데코레이터가 있다면 유지
-def admin_dashboard():
+def admin_root():
+    return redirect(url_for('admin_vacation'))
+
+# 2) 휴가 관리 전용 페이지
+@app.route('/admin/vacation')
+def admin_vacation():
     if 'user' not in session or session['user']['role'] != 'admin':
         flash("관리자 대시보드 접근 권한이 없습니다.", "danger")
         return redirect(url_for('login'))
 
-    user = session['user'] # 현재 로그인한 관리자 정보
-
     headers = {
         "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Content-Type": "application/json"
+        "Authorization": f"Bearer {SUPABASE_KEY}"
     }
 
-    # 1. 모든 사용자 정보 가져오기 (이름 매핑용)
+    # --- 직원 목록 가져오기 (통계용) ---
     users_res = requests.get(
-        f"{SUPABASE_URL}/rest/v1/users?select=id,name,join_date,role", # role도 함께 가져옴
+        f"{SUPABASE_URL}/rest/v1/users?select=id,name,join_date,role",
         headers=headers
     )
-    all_users = users_res.json() if users_res.status_code == 200 else []
-    user_names = {u['id']: u['name'] for u in all_users} # user_id: name 딕셔너리 생성
-    employee_users = [u for u in all_users if u.get('role') != 'admin'] # 직원만 필터링
+    all_users     = users_res.json() if users_res.status_code == 200 else []
+    employee_users = [u for u in all_users if u.get('role') != 'admin']
 
-
-    # ✅ 휴가 신청 내역 조회 (deduct_from_type 컬럼도 함께 가져옴)
+    # --- 휴가 신청 내역 조회 ---
     params = {
         "select": "id,start_date,end_date,type,status,user_id,users(name),deduct_from_type",
         "order": "start_date.desc"
     }
-
     res = requests.get(f"{SUPABASE_URL}/rest/v1/vacations", headers=headers, params=params)
     vacations = res.json() if res.status_code == 200 else []
 
+    # 이름·표시형식 가공
     for v in vacations:
-        v["name"] = v["users"]["name"] if "users" in v else "Unknown" # 조인된 이름 사용
-        # HTML 표시를 위한 휴가 종류 설정
+        v["name"] = v.get("users", {}).get("name", "알 수 없음")
         if v.get('type') == 'full_day':
             v['display_type'] = '종일'
         elif v.get('type') == 'half_day_am':
@@ -346,177 +348,153 @@ def admin_dashboard():
         elif v.get('type') == 'quarter_day_pm':
             v['display_type'] = '반반차(오후)'
         else:
-            v['display_type'] = v.get('type', '알 수 없음') # 기존 데이터 호환을 위한 폴백
+            v['display_type'] = v.get('type', '알 수 없음')
 
+    # --- 직원별 통계 계산 ---
 
-    # ✅ 직원별 휴가 통계 계산
-    user_stats_dict = defaultdict(dict) # defaultdict 사용
-    
-    # 모든 '승인됨' 상태의 휴가 기록 가져오기 (통계 계산용)
-    all_approved_vacations_res = requests.get(
+    user_stats_dict = defaultdict(dict)
+    # 승인된 휴가만
+    all_approved_res = requests.get(
         f"{SUPABASE_URL}/rest/v1/vacations?status=eq.approved&select=user_id,used_days,deduct_from_type,type",
         headers=headers
     )
-    all_approved_vacations = all_approved_vacations_res.json() if all_approved_vacations_res.status_code == 200 else []
-
-
-    for u in employee_users: # all_users 대신 employee_users 사용
+    all_approved = all_approved_res.json() if all_approved_res.status_code == 200 else []
+    for u in employee_users:
         uid = u["id"]
-        name = u["name"]
-        join_date_str = u.get("join_date")
-
-        if not join_date_str:
-            continue 
-
-        auto_yearly, auto_monthly = calculate_leave(join_date_str)
-
-        used_yearly = 0.0
-        used_monthly = 0.0
-
-        # 현재 직원의 승인된 휴가만 필터링
-        user_approved_vacations = [
-            v for v in all_approved_vacations if v['user_id'] == uid
-        ]
-
-        for vac in user_approved_vacations:
-            try:
-                used_days_val = float(vac.get("used_days", 0))
-            except (ValueError, TypeError):
-                used_days_val = 0.0 
-
-            deduction_source = vac.get("deduct_from_type") # 'yearly' 또는 'monthly'
-
-            if deduction_source == "yearly":
-                used_yearly += used_days_val
-            elif deduction_source == "monthly":
-                used_monthly += used_days_val
+        auto_y, auto_m = calculate_leave(u.get("join_date") or "")
+        used_y = used_m = 0.0
+        for vac in all_approved:
+            if vac["user_id"] != uid: continue
+            days = float(vac.get("used_days") or 0)
+            src  = vac.get("deduct_from_type")
+            if src == "yearly":
+                used_y += days
+            elif src == "monthly":
+                used_m += days
             else:
-                # deduct_from_type이 없는 레거시 데이터 처리
-                # 'type' 필드의 값으로 연차/월차를 추정합니다.
-                # 'full_day'는 'yearly'로 간주합니다.
-                if vac.get("type") in ["연차", "종일"] or vac.get("type", "").startswith(("반차", "반반차")):
-                    used_yearly += used_days_val
-                elif vac.get("type") == "월차":
-                    used_monthly += used_days_val
-        
-        used_yearly = round(used_yearly, 2)
-        used_monthly = round(used_monthly, 2)
-
+                # 레거시 처리
+                if vac.get("type","").startswith(("반차","반반차","종일")):
+                    used_y += days
+                elif vac.get("type")=="월차":
+                    used_m += days
         user_stats_dict[uid] = {
-            "name": name,
-            "auto_yearly": auto_yearly,
-            "auto_monthly": auto_monthly,
-            "used_yearly": used_yearly,
-            "used_monthly": used_monthly,
-            "remain_yearly": max(auto_yearly - used_yearly, 0),
-            "remain_monthly": max(auto_monthly - used_monthly, 0)
+            "name": u["name"],
+            "auto_yearly": auto_y,
+            "auto_monthly": auto_m,
+            "used_yearly": round(used_y,2),
+            "used_monthly": round(used_m,2),
+            "remain_yearly": max(auto_y-used_y,0),
+            "remain_monthly": max(auto_m-used_m,0)
         }
-    
-    user_stats = list(user_stats_dict.values()) # 딕셔너리 값을 리스트로 변환하여 템플릿에 전달
+    user_stats = list(user_stats_dict.values())
 
+    # --- 승인 대기/완료 건수 ---
+    pending_count   = sum(1 for v in vacations if v["status"] == "pending")
+    completed_count = sum(1 for v in vacations if v["status"] in ["approved","rejected"])
 
-    # ✅ 결재할 휴가 / 완료된 휴가 건수 계산
-    pending_count = sum(1 for v in vacations if v['status'] == 'pending')
-    completed_count = sum(1 for v in vacations if v['status'] in ['approved', 'rejected'])
-
-    # ⭐ 4. 전체 직원 근무 기록 조회 및 계산 로직 (새로 추가) ⭐
-    all_attendance_records = []
-    try:
-        # 모든 직원의 근태 기록을 가져옵니다.
-        # 필요시 날짜 범위 제한 (예: 최근 30일)
-        kst_timezone = pytz.timezone('Asia/Seoul')
-        thirty_days_ago = (datetime.now(kst_timezone) - timedelta(days=30)).date() # KST 기준으로 30일 전 날짜 계산
-
-        all_attendance_params = {
-            "date": f"gte.{thirty_days_ago.isoformat()}", # 최근 30일 기록
-            "order": "date.desc,check_in_time.desc" # 날짜 역순, 같은 날은 출근시간 역순 정렬
-        }
-
-        all_attendance_res = requests.get(
-            f"{SUPABASE_URL}/rest/v1/attendances",
-            headers=headers,
-            params=all_attendance_params
-        )
-
-        if all_attendance_res.status_code == 200:
-            raw_records = all_attendance_res.json()
-
-            for record in raw_records:
-                record_date_str = record.get('date')
-                check_in_time_raw = record.get('check_in_time')
-                check_out_time_raw = record.get('check_out_time')
-                
-                # 직원 이름 추가
-                record_user_id = record.get('user_id')
-                employee_name = user_names.get(record_user_id, "알 수 없는 직원") # user_names 딕셔너리 사용
-
-                check_in_display = 'N/A'
-                check_out_display = 'N/A'
-                work_duration = '-'
-
-                dt_in_combined = None
-                dt_out_combined = None
-
-                # 출근 시간 파싱 및 AM/PM 포맷
-                if check_in_time_raw and record_date_str:
-                    try:
-                        dt_in_combined = datetime.strptime(f"{record_date_str} {check_in_time_raw}", '%Y-%m-%d %H:%M:%S')
-                        check_in_display = dt_in_combined.strftime('%I:%M %p') # HH:MM AM/PM
-                    except ValueError:
-                        print(f"관리자 근태: 출근 시간 또는 날짜 파싱 오류: 날짜={record_date_str}, 시간={check_in_time_raw}")
-
-                # 퇴근 시간 파싱 및 AM/PM 포맷
-                if check_out_time_raw and record_date_str:
-                    try:
-                        dt_out_combined = datetime.strptime(f"{record_date_str} {check_out_time_raw}", '%Y-%m-%d %H:%M:%S')
-                        check_out_display = dt_out_combined.strftime('%I:%M %p') # HH:MM AM/PM
-                    except ValueError:
-                        print(f"관리자 근태: 퇴근 시간 또는 날짜 파싱 오류: 날짜={record_date_str}, 시간={check_out_time_raw}")
-
-                # 근무 시간 계산
-                if dt_in_combined and dt_out_combined:
-                    if dt_out_combined < dt_in_combined:
-                           dt_out_combined += timedelta(days=1)
-
-                    duration = dt_out_combined - dt_in_combined
-                    total_seconds = int(duration.total_seconds())
-                    hours = total_seconds // 3600
-                    minutes = (total_seconds % 3600) // 60
-                    
-                    if hours < 0:
-                        work_duration = "오류"
-                    else:
-                        work_duration = f"{hours}시간 {minutes}분"
-                elif check_in_time_raw and not check_out_time_raw:
-                    work_duration = "근무 중"
-
-                all_attendance_records.append({
-                    'employee_name': employee_name,
-                    'date': record_date_str,
-                    'check_in': check_in_display,
-                    'check_out': check_out_display,
-                    'work_duration': work_duration,
-                    'user_id': record_user_id
-                })
-        else:
-            print(f"관리자 근태 기록 조회 실패: {all_attendance_res.status_code} - {all_attendance_res.text}")
-
-    except Exception as e:
-        print(f"관리자 근태 기록 처리 중 오류 발생: {e}")
-        import traceback
-        traceback.print_exc()
-
-    # ✅ 최종 템플릿 렌더링
     return render_template(
-        "admin_dashboard.html",
-        user=session['user'],
-        vacations=vacations,
-        user_stats=user_stats, # user_stats_dict.values() 대신 user_stats 사용
-        pending_count=pending_count,
-        completed_count=completed_count,
-        all_attendance_records=all_attendance_records,
-        all_users=employee_users # all_users 대신 employee_users 사용 (관리자 제외된 목록)
+        'admin_vacation.html',
+        active           = 'vacation',
+        user             = session['user'],
+        vacations        = vacations,
+        user_stats       = user_stats,
+        pending_count    = pending_count,
+        completed_count  = completed_count
     )
+
+# 3) 근무 기록 전용 페이지
+@app.route('/admin/attendance')
+def admin_attendance():
+    if 'user' not in session or session['user']['role'] != 'admin':
+        flash("관리자 대시보드 접근 권한이 없습니다.", "danger")
+        return redirect(url_for('login'))
+
+    headers = {
+        "apikey":        SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}"
+    }
+
+    # --- 직원 목록 (필터용) ---
+    users_res = requests.get(
+        f"{SUPABASE_URL}/rest/v1/users?select=id,name,role",
+        headers=headers
+    )
+    all_users      = users_res.json() if users_res.status_code == 200 else []
+    employee_users = [u for u in all_users if u.get('role') != 'admin']
+
+    # --- 근무 기록 조회 (최근 30일) ---
+    from datetime import datetime, timedelta
+    import pytz
+    kst = pytz.timezone('Asia/Seoul')
+    thirty_days_ago = (datetime.now(kst) - timedelta(days=30)).date().isoformat()
+    att_res = requests.get(
+        f"{SUPABASE_URL}/rest/v1/attendances?date=gte.{thirty_days_ago}&order=date.desc,check_in_time.desc",
+        headers=headers
+    )
+    raw = att_res.json() if att_res.status_code == 200 else []
+
+    # 이름 매핑
+    name_map = {u["id"]: u["name"] for u in all_users}
+
+    all_attendance_records = []
+    for r in raw:
+        record_date = r.get("date")
+        ci_raw      = r.get("check_in_time")
+        co_raw      = r.get("check_out_time")
+
+        # 디스플레이용 초기값
+        check_in_display  = ci_raw  or "미기록"
+        check_out_display = co_raw  or "미기록"
+        #work_duration     = "-"     # 기본값
+
+        dt_in  = None
+        dt_out = None
+
+        # 출근 시간 파싱
+        if ci_raw and record_date:
+            try:
+                dt_in = datetime.strptime(f"{record_date} {ci_raw}", "%Y-%m-%d %H:%M:%S")
+                check_in_display = dt_in.strftime("%I:%M %p")
+            except ValueError:
+                pass
+
+        # 퇴근 시간 파싱
+        if co_raw and record_date:
+            try:
+                dt_out = datetime.strptime(f"{record_date} {co_raw}", "%Y-%m-%d %H:%M:%S")
+                check_out_display = dt_out.strftime("%I:%M %p")
+            except ValueError:
+                pass
+
+        # 근무 시간 계산
+        if dt_in and dt_out:
+            if dt_out < dt_in:
+                dt_out += timedelta(days=1)
+            diff = dt_out - dt_in
+            total_sec = int(diff.total_seconds())
+            h = total_sec // 3600
+            m = (total_sec % 3600) // 60
+            work_duration = f"{h}시간 {m}분"
+        elif dt_in and not dt_out:
+            work_duration = "근무 중"
+
+        all_attendance_records.append({
+            "date":          record_date,
+            "employee_name": name_map.get(r.get("user_id"), "알 수 없음"),
+            "check_in":      check_in_display,
+            "check_out":     check_out_display,
+            "work_duration": work_duration,
+            "user_id":       r.get("user_id")
+        })
+
+    return render_template(
+        'admin_attendance.html',
+        active                 = 'attendance',
+        user                   = session['user'],
+        all_attendance_records = all_attendance_records,
+        all_users              = employee_users
+    )
+
 
 # ✅ 휴가 현황 캘린더
 @app.route('/vacation_calendar')
@@ -838,9 +816,6 @@ def monthly_stats():
     )
     vacations = res.json() if res.status_code == 200 else []
 
-    from collections import defaultdict
-    from dateutil.parser import parse
-
     # 👉 월별 휴가 사용 일수 집계 {유저명: {yyyy-mm: 총 사용일수}}
     monthly_stats = defaultdict(lambda: defaultdict(float))
 
@@ -869,11 +844,6 @@ def download_stats():
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}"
     }
-
-    from collections import defaultdict
-    from dateutil.parser import parse
-    import io
-    import pandas as pd
 
     # 📌 1. 월별 통계 다운로드
     if stats_type == 'monthly':
@@ -1082,7 +1052,7 @@ def update_status():
 # ⭐ 새로운 라우트: 근무 기록 엑셀 다운로드 ⭐
 @app.route('/download-attendance-stats')
 def download_attendance_stats():
-    # 관리자 권한 확인 (필요하다면)
+    # 관리자 권한 확인
     if 'user' not in session or session['user']['role'] != 'admin':
         flash("엑셀 다운로드 권한이 없습니다.", "danger")
         return redirect(url_for('login'))
@@ -1092,29 +1062,37 @@ def download_attendance_stats():
         "Authorization": f"Bearer {SUPABASE_KEY}"
     }
 
-    # 필터링할 user_id를 쿼리 파라미터에서 가져옵니다.
-    # HTML에서 `downloadAttendanceBtn.href`를 업데이트하므로, 여기에 반영됩니다.
-    filter_user_id = request.args.get('user_id')
+    # 필터 파라미터
+    filter_user_id = request.args.get('user_id')          # 'all' | <uuid>
+    date_from      = request.args.get('date_from')         # 'YYYY-MM-DD' | None
+    date_to        = request.args.get('date_to')           # 'YYYY-MM-DD' | None
 
-    # 모든 사용자 정보를 가져와 이름 매핑용으로 사용
+    # 이름 매핑
     users_res = requests.get(
         f"{SUPABASE_URL}/rest/v1/users?select=id,name",
         headers=headers
     )
     user_names = {u['id']: u['name'] for u in users_res.json()} if users_res.status_code == 200 else {}
 
-    # Supabase에서 근태 기록 가져오기
-    # 필터링된 user_id가 있다면 해당 유저의 기록만 가져오고, 'all'이면 모든 기록을 가져옵니다.
+    # Supabase 쿼리 파라미터 구성
     attendance_params = {
         "order": "date.desc,check_in_time.desc"
     }
     if filter_user_id and filter_user_id != 'all':
         attendance_params["user_id"] = f"eq.{filter_user_id}"
-    
-    # 모든 기간의 기록을 다운로드하는 것이 일반적이지만, 필요하면 날짜 범위 제한을 추가할 수 있습니다.
-    # thirty_days_ago = (datetime.now() - timedelta(days=30)).date()
-    # attendance_params["date"] = f"gte.{thirty_days_ago.isoformat()}"
 
+    # 날짜 범위 필터 적용
+    # - 둘 다 있으면 and=(date.gte.X,date.lte.Y)
+    # - 하나만 있으면 date=gte.X 또는 date=lte.Y
+    if date_from and date_to:
+        attendance_params["and"] = f"(date.gte.{date_from},date.lte.{date_to})"
+    elif date_from:
+        attendance_params["date"] = f"gte.{date_from}"
+    elif date_to:
+        attendance_params["date"] = f"lte.{date_to}"
+    # (없으면 전체 기간)
+
+    # 근태 기록 조회
     all_attendance_res = requests.get(
         f"{SUPABASE_URL}/rest/v1/attendances",
         headers=headers,
@@ -1144,24 +1122,24 @@ def download_attendance_stats():
                     dt_in_combined = datetime.strptime(f"{record_date_str} {check_in_time_raw}", '%Y-%m-%d %H:%M:%S')
                     check_in_display = check_in_time_raw[:5]
                 except ValueError:
-                    print(f"Excel 다운로드: 출근 시간 또는 날짜 파싱 오류: 날짜={record_date_str}, 시간={check_in_time_raw}")
+                    print(f"Excel 다운로드: 출근 시간/날짜 파싱 오류: 날짜={record_date_str}, 시간={check_in_time_raw}")
 
             if check_out_time_raw and record_date_str:
                 try:
                     dt_out_combined = datetime.strptime(f"{record_date_str} {check_out_time_raw}", '%Y-%m-%d %H:%M:%S')
                     check_out_display = check_out_time_raw[:5]
                 except ValueError:
-                    print(f"Excel 다운로드: 퇴근 시간 또는 날짜 파싱 오류: 날짜={record_date_str}, 시간={check_out_time_raw}")
+                    print(f"Excel 다운로드: 퇴근 시간/날짜 파싱 오류: 날짜={record_date_str}, 시간={check_out_time_raw}")
 
             if dt_in_combined and dt_out_combined:
                 if dt_out_combined < dt_in_combined:
-                     dt_out_combined += timedelta(days=1)
+                    dt_out_combined += timedelta(days=1)
 
                 duration = dt_out_combined - dt_in_combined
                 total_seconds = int(duration.total_seconds())
                 hours = total_seconds // 3600
                 minutes = (total_seconds % 3600) // 60
-                
+
                 if hours < 0:
                     work_duration = "오류"
                 else:
@@ -1177,22 +1155,30 @@ def download_attendance_stats():
                 '근무시간': work_duration
             })
 
-    # Pandas DataFrame 생성
+    # DataFrame → Excel
     df = pd.DataFrame(records_for_excel)
-
-    # Excel 파일 생성 (메모리 내에서)
     output = io.BytesIO()
-    writer = pd.ExcelWriter(output, engine='xlsxwriter')
-    df.to_excel(writer, index=False, sheet_name='근무기록')
-    writer.close() # writer.save() 대신 writer.close() 사용 (pandas 1.x 이상)
-    output.seek(0) # 파일 포인터를 처음으로 이동
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='근무기록')
+    output.seek(0)
 
-    # 파일 전송
-    filename = f"근무기록_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-    return send_file(output, 
-                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                     as_attachment=True, 
-                     download_name=filename)
+    # 파일명에 유저/기간 반영(선택)
+    user_part = ''
+    if filter_user_id and filter_user_id != 'all':
+        user_part = f"_{user_names.get(filter_user_id, '직원')}"
+    range_part = ''
+    if date_from or date_to:
+        range_part = f"_{date_from or ''}~{date_to or ''}"
+
+    filename = f"근무기록{user_part}{range_part}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+
+    return send_file(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=filename
+    )
+
 
 
 # ✅ 직원관리용 페이지라우트
@@ -1209,7 +1195,11 @@ def manage_users():
     res = requests.get(f"{SUPABASE_URL}/rest/v1/users?select=id,name,email,join_date,role", headers=headers)
     users = res.json() if res.status_code == 200 else []
 
-    return render_template("manage_users.html", users=users)
+    return render_template(
+        "manage_users.html", 
+        users=users,
+        user=session['user'],
+         active='manage-users')
 
 # ✅ 직원관리용 페이지라우트-직원등록
 @app.route('/add-user', methods=['POST'])
@@ -1686,6 +1676,318 @@ def my_vacations_history():
             v['type_kor'] = '반반차(오후)'
     
     return jsonify(vacations)
+
+# =========================================================
+# ✅ [오류 해결을 위한 함수]
+# =========================================================
+
+def parse_iso_datetime(iso_string: str) -> datetime:
+    """
+    Parses an ISO 8601 string into a datetime object.
+    It robustly handles various non-standard formats using datetime.strptime().
+    - Corrects non-standard timezone offsets ('+HHMM') to '+HH:MM'.
+    - Corrects 'Z' to '+00:00'.
+    - Normalizes fractional seconds to exactly 6 digits (microseconds).
+    """
+    
+    processed_string = iso_string
+
+    # Step 1: Handle non-standard timezone offsets
+    # e.g., '+0000' -> '+00:00'
+    tz_match = re.fullmatch(r'(.+)([+-]\d{4})$', processed_string)
+    if tz_match:
+        naive_part, tz_offset = tz_match.groups()
+        processed_string = f"{naive_part}{tz_offset[:3]}:{tz_offset[3:]}"
+    
+    # e.g., 'Z' -> '+00:00'
+    elif processed_string.endswith('Z'):
+        processed_string = processed_string[:-1] + '+00:00'
+
+    # Step 2: Normalize fractional seconds to 6 digits (microseconds)
+    # This is the key fix for the a ValueError with > 6 fractional digits.
+    match = re.search(r'\.(\d+)', processed_string)
+    if match:
+        fractional_seconds = match.group(1)
+        # Truncate to 6 digits if longer, then pad with '0' if shorter.
+        # This ensures it's always exactly 6 digits.
+        padded_seconds = fractional_seconds[:6].ljust(6, '0')
+        # Replace the original fractional seconds with the padded one
+        processed_string = processed_string.replace(f".{fractional_seconds}", f".{padded_seconds}")
+    
+    # Step 3: Final parsing using datetime.strptime()
+    try:
+        # Format with fractional seconds
+        if '.' in processed_string:
+            return datetime.strptime(processed_string, '%Y-%m-%dT%H:%M:%S.%f%z')
+        # Format without fractional seconds
+        else:
+            # Timezone offset follows seconds directly
+            return datetime.strptime(processed_string, '%Y-%m-%dT%H:%M:%S%z')
+    except ValueError as e:
+        # Raise an error if parsing ultimately fails
+        raise ValueError(f"Invalid isoformat string: '{iso_string}' after correction attempts. Final string: '{processed_string}'")
+
+# =========================================================
+# ✅ [새로 추가된 부분] 공지사항 관련 라우트
+# =========================================================
+
+# 공지사항 페이지 (직원/관리자 모두 접근 가능)
+@app.route('/notices')
+def notices_page():
+    """
+    공지사항 목록 페이지를 렌더링합니다.
+    로그인한 사용자만 접근 가능합니다.
+    """
+    if 'user' not in session:
+        flash("로그인이 필요합니다.", "info")
+        return redirect(url_for('login'))
+        
+    return render_template('notices.html', user=session['user'])
+
+@app.route('/api/notices', methods=['GET'])
+def get_notices_api():
+    if 'user' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    headers = {
+        "apikey":        SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}"
+    }
+    params = {
+        "select": "id,title,content,created_at,attachments",
+        "order":  "created_at.desc"
+    }
+
+    try:
+        res = requests.get(
+            f"{SUPABASE_URL}/rest/v1/notices",
+            headers=headers,
+            params=params
+        )
+        res.raise_for_status()
+        notices = res.json()
+        
+        # 날짜 파싱 & 포맷, attachments 분할
+        for notice in notices:
+            # 1) created_at 처리
+            created = notice.get('created_at')
+            if created:
+                try:
+                    dt = isoparse(created)
+                    notice['created_at'] = dt
+                except (ValueError, TypeError):
+                    notice['created_at'] = '날짜 정보 없음'
+            # 2) attachments 처리
+            atts = notice.get('attachments')
+            notice['attachments'] = [a.strip() for a in atts.split(',')] if atts else []
+
+        return jsonify(notices)
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching notices: {e}")
+        return jsonify({'error': 'Failed to fetch notices'}), 500
+
+# 공지사항 생성 라우트 (관리자만 접근 가능)
+@app.route('/admin/notices/create', methods=['GET', 'POST'])
+def create_notice():
+    """
+    공지사항 작성 폼을 렌더링하고,
+    POST면 Supabase에 저장 후 관리 페이지로 리다이렉트합니다.
+    """
+    if 'user' not in session or session['user']['role'] != 'admin':
+        flash("공지사항 생성 권한이 없습니다.", "danger")
+        return redirect(url_for('login'))
+        
+    if request.method == 'POST':
+        title = request.form.get('title')
+        content = request.form.get('content')
+        attachments = request.files.getlist('attachments')
+
+        # 파일 이름 콤마로 저장
+        attachment_names = [f.filename for f in attachments if f.filename]
+        attachments_str = ','.join(attachment_names) if attachment_names else None
+
+        headers = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation"
+        }
+        data = {
+            "title": title,
+            "content": content,
+            "attachments": attachments_str
+        }
+
+        try:
+            res = requests.post(
+                f"{SUPABASE_URL}/rest/v1/notices",
+                headers=headers,
+                data=json.dumps(data)
+            )
+            res.raise_for_status()
+            flash("✅ 공지사항이 생성되었습니다.", "success")
+        except requests.exceptions.RequestException as e:
+            print(f"Error creating notice: {e}")
+            flash("❌ 공지사항 생성에 실패했습니다.", "danger")
+
+        return redirect(url_for('manage_notices'))
+
+    # ── GET: 폼 렌더링 ──
+    return render_template(
+        'create_notice.html',
+        user=session['user'],
+        active='create-notice'      # 사이드바 하이라이트용
+    )
+# ✅ 공지사항 상세 정보 JSON 반환 API
+@app.route('/api/notices/<int:notice_id>')
+def get_notice_detail_api(notice_id):
+    if 'user' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}"
+    }
+
+    try:
+        res = requests.get(
+            f"{SUPABASE_URL}/rest/v1/notices",
+            headers=headers,
+            params={
+                "id": f"eq.{notice_id}",
+                "select": "id,title,content,created_at,attachments"
+            }
+        )
+        res.raise_for_status()
+        data = res.json()
+
+        if not data:
+            return jsonify({'error': '공지사항을 찾을 수 없습니다.'}), 404
+
+        notice = data[0]
+
+        # 날짜 포맷 정리
+        if 'created_at' in notice:
+            try:
+                dt_object = datetime.fromisoformat(notice['created_at'].replace('Z', '+00:00'))
+                notice['created_at'] = dt_object.strftime('%Y-%m-%d %H:%M:%S')
+            except Exception:
+                notice['created_at'] = '날짜 정보 없음'
+
+        # 첨부파일 리스트 처리
+        if notice.get('attachments'):
+            notice['attachments'] = [a.strip() for a in notice['attachments'].split(',')]
+        else:
+            notice['attachments'] = []
+
+        return jsonify(notice)
+
+    except requests.exceptions.RequestException as e:
+        print(f"[ERROR] 공지 상세 조회 실패: {e}")
+        return jsonify({'error': '공지사항 상세 정보를 가져오지 못했습니다.'}), 500
+    
+@app.route('/manage-notices')
+def manage_notices():
+    # 1) notices + 작성자 이름(users.name) 조회
+    resp = supabase\
+        .table('notices')\
+        .select('id, title, content, attachments, created_at, users(name)')\
+        .order('created_at', desc=True)\
+        .execute()
+    notices = resp.data or []
+
+    for notice in notices:
+        # 2) created_at → 날짜 문자열 "YYYY-MM-DD" 로 변경
+        if notice.get('created_at'):
+            try:
+                dt = isoparse(notice['created_at'])
+                notice['created_at'] = dt.date().isoformat()
+            except Exception:
+                notice['created_at'] = '날짜 정보 없음'
+        # 3) attachments 분리
+        atts = notice.get('attachments')
+        notice['attachments'] = [s.strip() for s in atts.split(',')] if atts else []
+        # 4) users(name) → author.name
+        user_info = notice.get('users') or {}
+        notice['author'] = {'name': user_info.get('name', '관리자')}
+
+    return render_template(
+        'manage_notices.html',
+        notices=notices,
+        active='manage-notices',
+        user=session.get('user')
+    )
+
+
+@app.route('/notices/<string:notice_id>/delete', methods=['POST'])
+def delete_notice(notice_id):
+    resp = supabase\
+        .table('notices')\
+        .delete()\
+        .eq('id', notice_id)\
+        .execute()
+
+    # Supabase v2+ 에서는 .error 가 없으므로 status_code 로 검사
+    status = getattr(resp, 'status_code', None)
+    if status == 204:
+        flash('✅ 공지사항이 삭제되었습니다.', 'success')
+    else:
+        flash(f'❌ 삭제 중 오류가 발생했습니다. (status {status})', 'danger')
+    return redirect(url_for('manage_notices'))
+
+
+@app.route('/notices/<string:notice_id>/edit', methods=['GET', 'POST'])
+def edit_notice(notice_id):
+    if request.method == 'POST':
+        title   = request.form['title']
+        content = request.form['content']
+        resp = supabase\
+            .table('notices')\
+            .update({
+                'title': title,
+                'content': content,
+                'updated_at': datetime.utcnow().isoformat()
+            })\
+            .eq('id', notice_id)\
+            .execute()
+
+        status = getattr(resp, 'status_code', None)
+        if status == 200:
+            flash('✅ 공지사항이 수정되었습니다.', 'success')
+        else:
+            flash(f'❌ 수정 중 오류가 발생했습니다. (status {status})', 'danger')
+        return redirect(url_for('manage_notices'))
+
+    # GET: 기존 데이터 + 작성자 조회
+    resp = supabase\
+        .table('notices')\
+        .select('id, title, content, attachments, created_at, users(name)')\
+        .eq('id', notice_id)\
+        .single()\
+        .execute()
+    notice = resp.data or {}
+
+    # created_at → 날짜 문자열
+    if notice.get('created_at'):
+        try:
+            dt = isoparse(notice['created_at'])
+            notice['created_at'] = dt.date().isoformat()
+        except Exception:
+            notice['created_at'] = '날짜 정보 없음'
+    # attachments 분리
+    atts = notice.get('attachments')
+    notice['attachments'] = [s.strip() for s in atts.split(',')] if atts else []
+    # users(name) → author.name
+    user_info = notice.get('users') or {}
+    notice['author'] = {'name': user_info.get('name', '알 수 없음')}
+
+    return render_template(
+        'edit_notice.html',
+        notice=notice,
+        active='manage-notices',
+        user=session.get('user')
+    )
 
 # ✅ 앱 실행
 if __name__ == '__main__':

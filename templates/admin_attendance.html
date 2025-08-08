@@ -1,0 +1,147 @@
+{# templates/admin_attendance.html #}
+{% extends "layout.html" %}
+{% set active = 'attendance' %}
+
+{% block title %}관리자 대시보드 – 근무 기록{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+  <div class="bg-white shadow rounded-lg p-6">
+
+    <!-- 헤더 레이아웃: 좌(제목) / 중앙(월 네비) / 우(필터+다운로드) -->
+    <div class="mb-6 grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] items-center gap-4">
+      <!-- 왼쪽: 제목 -->
+      <h2 class="text-2xl font-semibold text-gray-800 md:justify-self-start">
+        ⏰ 전체 직원 근무 기록
+      </h2>
+
+      <!-- 가운데: 월 네비 (정중앙) -->
+      <div class="flex items-center justify-center gap-2 md:justify-self-center">
+        <button id="prevMonthBtn"
+                class="inline-flex items-center justify-center w-9 h-9 rounded-md border border-gray-300 hover:bg-gray-50">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+               fill="currentColor" viewBox="0 0 16 16">
+            <path fill-rule="evenodd"
+              d="M11.354 1.646a.5.5 0 0 1 0 .708L5.707 8l5.647 5.646a.5.5 0 0 1-.708.708l-6-6a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0z"/>
+          </svg>
+        </button>
+
+        <span id="currentMonthDisplay"
+              class="tabular-nums text-lg font-semibold min-w-[120px] text-center">
+          <!-- JS에서 YYYY-MM 채움 -->
+        </span>
+
+        <button id="nextMonthBtn"
+                class="inline-flex items-center justify-center w-9 h-9 rounded-md border border-gray-300 hover:bg-gray-50">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+               fill="currentColor" viewBox="0 0 16 16">
+            <path fill-rule="evenodd"
+              d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- 오른쪽: 직원 선택 + 엑셀 (줄바꿈 방지) -->
+      <div class="flex items-center justify-end gap-3 md:justify-self-end">
+        <div class="flex items-center gap-2 whitespace-nowrap">
+          <label for="employeeFilter" class="text-gray-700 font-medium whitespace-nowrap">직원 선택:</label>
+          <select id="employeeFilter"
+                  class="border border-gray-300 rounded-md py-2 px-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+            <option value="all">모든 직원</option>
+            {% for u in all_users if u.role != 'admin' %}
+              <option value="{{ u.id }}">{{ u.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <a href="/download-attendance-stats" id="downloadAttendanceBtn"
+           class="inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-md shadow hover:bg-blue-700 transition whitespace-nowrap shrink-0">
+          📥 엑셀 다운로드
+        </a>
+      </div>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="min-w-full divide-y divide-gray-200 text-center">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="px-6 py-3 text-sm font-semibold text-gray-500 uppercase tracking-wider">날짜</th>
+            <th class="px-6 py-3 text-sm font-semibold text-gray-500 uppercase tracking-wider">이름</th>
+            <th class="px-6 py-3 text-sm font-semibold text-gray-500 uppercase tracking-wider">출근시간</th>
+            <th class="px-6 py-3 text-sm font-semibold text-gray-500 uppercase tracking-wider">퇴근시간</th>
+            <th class="px-6 py-3 text-sm font-semibold text-gray-500 uppercase tracking-wider">근무시간</th>
+          </tr>
+        </thead>
+        <tbody id="attendanceTableBody" class="bg-white divide-y divide-gray-200">
+          {# JS가 렌더링 #}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const allRecords   = {{ all_attendance_records | tojson }};
+  const employeeSel  = document.getElementById('employeeFilter');
+  const tbody        = document.getElementById('attendanceTableBody');
+  const downloadBtn  = document.getElementById('downloadAttendanceBtn');
+
+  const prevBtn   = document.getElementById('prevMonthBtn');
+  const nextBtn   = document.getElementById('nextMonthBtn');
+  const monthSpan = document.getElementById('currentMonthDisplay');
+
+  let current = new Date();
+  current.setDate(1);
+
+  function ymStr(d){ const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,'0'); return `${y}-${m}`; }
+  function monthRange(d){
+    const y=d.getFullYear(), m=d.getMonth();
+    const s=new Date(y,m,1), e=new Date(y,m+1,0);
+    const f=dt=>`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+    return {from:f(s), to:f(e)};
+  }
+  function updateMonthDisplay(){ monthSpan.textContent = ymStr(current); }
+
+  function render(rows){
+    if(!rows.length){
+      tbody.innerHTML = `<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">근무 기록이 없습니다.</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = rows.map(r=>`
+      <tr class="hover:bg-gray-100">
+        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${r.date}</td>
+        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${r.employee_name}</td>
+        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${r.check_in  || '미기록'}</td>
+        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${r.check_out || '미기록'}</td>
+        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${r.work_duration || '-'}</td>
+      </tr>`).join('');
+  }
+
+  function filterAndRender(){
+    const sel = employeeSel.value;
+    const targetYM = ymStr(current);
+    const filtered = allRecords.filter(r=>{
+      const inMonth = (typeof r.date==='string') && r.date.startsWith(targetYM+'-');
+      const byUser  = (sel==='all') || (String(r.user_id)===String(sel));
+      return inMonth && byUser;
+    });
+    render(filtered);
+
+    const {from,to} = monthRange(current);
+    const p = new URLSearchParams();
+    if(sel!=='all') p.set('user_id', sel);
+    p.set('date_from', from); p.set('date_to', to);
+    downloadBtn.href = `/download-attendance-stats?${p.toString()}`;
+  }
+
+  prevBtn.addEventListener('click', ()=>{ current.setMonth(current.getMonth()-1); updateMonthDisplay(); filterAndRender(); });
+  nextBtn.addEventListener('click', ()=>{ current.setMonth(current.getMonth()+1); updateMonthDisplay(); filterAndRender(); });
+  employeeSel.addEventListener('change', filterAndRender);
+
+  updateMonthDisplay();
+  filterAndRender();
+});
+</script>
+{% endblock %}

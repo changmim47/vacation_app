@@ -1,0 +1,188 @@
+{% extends "layout.html" %}
+{% set active = 'vacation' %}
+
+{% block title %}관리자 대시보드 – 휴가 관리{% endblock %}
+
+{% block content %}
+<div class="grid grid-cols-2 gap-6 mb-6">
+  <!-- 휴가 결재 내역 카드 -->
+  <div class="bg-white rounded shadow p-4">
+    <h3 class="text-xl font-semibold mb-4">📄 휴가 결재 내역</h3>
+    <div class="flex space-x-2 mb-4">
+      <button class="tab-btn active px-3 py-1 bg-gray-200 rounded" data-tab="pending">
+        결재할 휴가 ({{ pending_count }}건)
+      </button>
+      <button class="tab-btn px-3 py-1 rounded" data-tab="completed">
+        완료된 휴가 ({{ completed_count }}건)
+      </button>
+    </div>
+    <div class="tab-content" id="pending" style="display: block;">
+      {% for v in vacations if v.status == 'pending' %}
+      <div class="flex justify-between items-center py-2 border-b">
+        <div>
+          <span class="tag">{{ v.display_type }}</span>
+          <span class="name">{{ v.name }}</span><br>
+          <small class="date">{{ v.start_date }} ~ {{ v.end_date }}</small>
+        </div>
+        <div class="space-x-2">
+          <form method="POST" action="/update-status" style="display:inline">
+            <input type="hidden" name="vacation_id" value="{{ v.id }}">
+            <input type="hidden" name="status" value="approved">
+            <button type="submit" class="px-2 py-1 text-sm font-semibold bg-green-100 rounded hover:bg-green-200">
+              승인
+            </button>
+          </form>
+          <form method="POST" action="/update-status" style="display:inline">
+            <input type="hidden" name="vacation_id" value="{{ v.id }}">
+            <input type="hidden" name="status" value="rejected">
+            <button type="submit" class="px-2 py-1 text-sm font-semibold bg-red-100 rounded hover:bg-red-200">
+              반려
+            </button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+      {% if pending_count == 0 %}
+      <p class="text-center text-gray-500 mt-4">결재할 휴가가 없습니다.</p>
+      {% endif %}
+    </div>
+    <div class="tab-content" id="completed" style="display: none;">
+      {% for v in vacations if v.status in ['approved','rejected'] %}
+      <div class="flex justify-between items-center py-2 border-b">
+        <div>
+          <span class="tag">{{ v.display_type }}</span>
+          <span class="name">{{ v.name }}</span><br>
+          <small class="date">{{ v.start_date }} ~ {{ v.end_date }}</small>
+        </div>
+        <div>
+          {% if v.status == 'approved' %}✅{% else %}❌{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+      {% if completed_count == 0 %}
+      <p class="text-center text-gray-500 mt-4">완료된 휴가가 없습니다.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- 직원별 휴가 통계 카드 -->
+  <div class="bg-white rounded shadow p-4 relative">
+    <div class="flex justify-between items-center mb-4">
+      <h3 class="text-xl font-semibold">📊 직원별 휴가 통계</h3>
+      <button id="statsMenuBtn" class="px-2 py-1 bg-gray-100 rounded">⋮</button>
+      <ul id="statsMenu" class="hidden absolute right-4 top-10 w-48 bg-white border rounded shadow-lg z-10">
+        <li><a href="/monthly-stats" class="block px-4 py-2 hover:bg-gray-100">📆 월별 사용</a></li>
+        <li><a href="/used-vacations" class="block px-4 py-2 hover:bg-gray-100">🗂 소진 내역</a></li>
+        <li><a href="/download-stats" class="block px-4 py-2 hover:bg-gray-100">📥 엑셀 다운로드</a></li>
+      </ul>
+    </div>
+    <div class="overflow-auto max-h-80">
+      <table class="w-full text-center text-sm">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="px-2 py-1">이름</th>
+            <th class="px-2 py-1">총 연차</th>
+            <th class="px-2 py-1">총 월차</th>
+            <th class="px-2 py-1">사용 연차</th>
+            <th class="px-2 py-1">사용 월차</th>
+            <th class="px-2 py-1">잔여 연차</th>
+            <th class="px-2 py-1">잔여 월차</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for stat in user_stats %}
+          <tr class="border-t">
+            <td class="px-2 py-1">{{ stat.name }}</td>
+            <td class="px-2 py-1">{{ stat.auto_yearly }}</td>
+            <td class="px-2 py-1">{{ stat.auto_monthly }}</td>
+            <td class="px-2 py-1">{{ stat.used_yearly }}</td>
+            <td class="px-2 py-1">{{ stat.used_monthly }}</td>
+            <td class="px-2 py-1">{{ stat.remain_yearly }}</td>
+            <td class="px-2 py-1">{{ stat.remain_monthly }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 캘린더 -->
+<div class="calendar-card">
+  <h3 class="text-xl font-semibold mb-4">🗓️ 직원 휴가 캘린더</h3>
+  <div id="calendar"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  // FullCalendar 초기화
+  const calendarEl = document.getElementById('calendar');
+  if (!calendarEl) return;
+
+  window.calendar = new FullCalendar.Calendar(calendarEl, {
+    initialView: 'dayGridMonth',
+    locale: 'ko',
+    height: 600,
+    headerToolbar: {
+      left: 'today prev,next',
+      center: 'title',
+      right: 'dayGridMonth,listWeek'
+    },
+    // 이벤트 로딩을 함수로 대체
+    events: function(fetchInfo, successCallback, failureCallback) {
+      const year = fetchInfo.start.getFullYear();
+      const holidayUrl = `/static/holidays/${year}holidays.json`;
+
+      Promise.all([
+        fetch('/vacation-events').then(res => res.json()),
+        fetch(holidayUrl).then(res => res.json()).catch(() => [])
+      ])
+      .then(([vacationEvents, holidayEvents]) => {
+        // 두 배열을 합쳐서 전달
+        successCallback([...vacationEvents, ...holidayEvents]);
+      })
+      .catch(error => {
+        console.error('이벤트 로딩 실패:', error);
+        failureCallback(error);
+      });
+    },
+    dayCellDidMount: info => {
+      const d = info.date.getDay();
+      const n = info.el.querySelector('.fc-daygrid-day-number');
+      if (n) {
+        if (d === 0) n.style.color = 'red';
+        if (d === 6) n.style.color = 'blue';
+      }
+    }
+  });
+  window.calendar.render();
+  
+  // 통계 드롭다운 토글
+  const statsBtn = document.getElementById('statsMenuBtn');
+  const statsMenu = document.getElementById('statsMenu');
+  statsBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    statsMenu.classList.toggle('hidden');
+  });
+  document.addEventListener('click', e => {
+    if (!statsBtn.contains(e.target) && !statsMenu.contains(e.target)) {
+      statsMenu.classList.add('hidden');
+    }
+  });
+
+  // 내부 탭 (결재 대기/완료)
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const target = btn.dataset.tab;
+      document.querySelectorAll('.tab-content').forEach(c => {
+        c.style.display = (c.id === target) ? 'block' : 'none';
+      });
+    });
+  });
+});
+</script>
+{% endblock %}

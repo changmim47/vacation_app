@@ -1,9 +1,11 @@
-flask
+Flask
+Flask-Login
 requests
 python-dotenv
 gunicorn
 python-dateutil
 pandas
+numpy
 pytz
-xlsxwriter
-flask_login
+XlsxWriter
+supabase>=2.4

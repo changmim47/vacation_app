@@ -26,6 +26,7 @@
     text-align: center;
     width: 100%;
     display: block;
+    font-weight: bold;
 }
 
 .fc .fc-daygrid-day-number {

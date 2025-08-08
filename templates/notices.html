@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+
+{% block title %}공지사항{% endblock %}
+
+{% block head_extras %}
+
+{% endblock %}
+
+{% block content %}
+<div class="notice-main-container">
+    <div class="notice-grid">
+
+        <!-- 공지사항 목록 (왼쪽 패널) -->
+        <div class="notice-card" id="notices-list-card">
+            <div class="notice-card-header">
+                <h5><i class="material-icons-outlined">campaign</i> 공지사항</h5>
+                <span id="notice-count">총 0건</span>
+            </div>
+            
+            <div class="notice-card-body">
+                <!-- 로딩 인디케이터 -->
+                <div id="loading" class="loading-indicator">
+                    <div class="spinner"></div>
+                    <p class="mt-2">공지사항을 불러오는 중...</p>
+                </div>
+                
+                <!-- 공지사항 테이블 -->
+                <div class="notices-table-wrapper" style="max-height: 500px; overflow-y: auto;">
+                    <table class="notice-table-container">
+                        <thead>
+                            <tr>
+                                <th style="width: 15%;">No.</th>
+                                <th style="width: 55%;">제목</th>
+                                <th style="width: 30%;">작성일자</th>
+                            </tr>
+                        </thead>
+                        <tbody id="notices-table-body">
+                            <!-- JavaScript로 공지사항 목록이 여기에 동적으로 추가됩니다 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 공지사항 상세 (오른쪽 패널) -->
+        <!-- ✅ 여기에 지금 너가 보여준 패널을 붙여 넣으면 됩니다 -->
+        <!-- 🔽 붙여넣기 시작 -->
+        <div class="notice-card" id="notice-detail-card" style="display: none;">
+            <div class="notice-card-header">
+                <h5><i class="material-icons-outlined">article</i> 공지사항 상세</h5>
+            </div>
+            <div class="notice-card-body">
+                <div id="initial-message" class="initial-message">
+                    <p>왼쪽 목록에서 공지사항을 선택하세요.</p>
+                </div>
+                
+                <div id="notice-content-wrapper" style="display: none;">
+                    <div class="notice-detail-info">
+                        <div><span class="notice-info-label">작성자:</span> <span id="detail-author"></span></div>
+                        <div><span class="notice-info-label">작성일:</span> <span id="detail-date"></span></div>
+                    </div>
+                    
+                    <h4 class="notice-detail-title" id="detail-title"></h4>
+                    <div id="detail-content" class="notice-detail-content">
+                        <!-- JavaScript로 공지사항 내용이 여기에 추가됩니다 -->
+                    </div>
+                    
+                    <div id="detail-attachments" class="notice-attachments" style="display: none;">
+                        <h5 class="notice-attachments-title">첨부파일</h5>
+                        <ul id="attachment-list" class="attachment-list">
+                            <!-- 첨부파일 링크가 여기에 동적으로 추가됩니다 -->
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const noticesListCard = document.getElementById('notices-list-card');
+        const noticesTableBody = noticesListCard.querySelector('#notices-table-body');
+        const loadingIndicator = noticesListCard.querySelector('#loading');
+        const noticeDetailCard = document.getElementById('notice-detail-card');
+        const noticeCountSpan = noticesListCard.querySelector('#notice-count');
+        const initialMessage = document.getElementById('initial-message');
+        const noticeContentWrapper = document.getElementById('notice-content-wrapper');
+
+        let allNotices = [];
+        let activeRow = null;
+
+        function formatKoreanDate(dateString) {
+            try {
+                const dateObj = new Date(dateString);
+                if (isNaN(dateObj.getTime())) throw new Error('Invalid date');
+                return `${dateObj.getFullYear()}. ${dateObj.getMonth() + 1}. ${dateObj.getDate()}.`;
+            } catch (e) {
+                console.error('Invalid date format:', dateString, e);
+                return '날짜 정보 없음';
+            }
+        }
+
+        async function fetchNotices() {
+            try {
+                const response = await fetch('/api/notices');
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                allNotices = await response.json();
+                loadingIndicator.style.display = 'none';
+
+                if (allNotices.length === 0) {
+                    noticesTableBody.innerHTML = `<tr><td colspan="3"><div class="empty-message">등록된 공지사항이 없습니다.</div></td></tr>`;
+                    noticeCountSpan.textContent = `총 0건`;
+                    initialMessage.style.display = 'flex';
+                    noticeContentWrapper.style.display = 'none';
+                    noticeDetailCard.style.display = 'flex';
+                    return;
+                }
+
+                renderNoticeTable(allNotices);
+                noticeCountSpan.textContent = `총 ${allNotices.length}건`;
+                noticeDetailCard.style.display = 'flex';
+
+                // 🔽 URL 파라미터에서 notice_id 가져오기
+                const params = new URLSearchParams(window.location.search);
+                const targetId = params.get('notice_id');
+
+                let targetRow = null;
+
+                if (targetId) {
+                    // ID 일치하는 공지사항 찾기
+                    const targetNotice = allNotices.find(n => String(n.id) === targetId);
+                    if (targetNotice) {
+                        // 일치하는 tr 찾아서 클릭하기
+                        const rows = noticesTableBody.querySelectorAll('tr');
+                        rows.forEach((tr, i) => {
+                            if (allNotices[i].id == targetId) {
+                                targetRow = tr;
+                            }
+                        });
+
+                        if (targetRow) {
+                            showNoticeDetails(targetNotice, targetRow);
+                            return;
+                        }
+                    }
+                }
+
+                // 기본: 첫 번째 행 선택
+                if (noticesTableBody.firstChild) {
+                    noticesTableBody.firstChild.click();
+                }
+
+            } catch (error) {
+                console.error('Error fetching notices:', error);
+                loadingIndicator.style.display = 'none';
+                noticesTableBody.innerHTML = `<tr><td colspan="3"><div class="error-message">공지사항을 불러오는 데 실패했습니다.</div></td></tr>`;
+                noticeDetailCard.style.display = 'flex';
+                initialMessage.style.display = 'none';
+                noticeContentWrapper.style.display = 'none';
+            }
+        }
+
+        function renderNoticeTable(notices) {
+            noticesTableBody.innerHTML = '';
+            notices.forEach((notice, index) => {
+                const row = document.createElement('tr');
+                row.onclick = () => {
+                history.pushState(null, '', `?notice_id=${notice.id}`);
+                showNoticeDetails(notice, row);
+            };
+
+                const formattedDate = formatKoreanDate(notice.created_at);
+                row.innerHTML = `
+                    <td>${notices.length - index}</td>
+                    <td>${notice.title || '제목 없음'}</td>
+                    <td>${formattedDate}</td>
+                `;
+                noticesTableBody.appendChild(row);
+            });
+        }
+
+        function showNoticeDetails(notice, row) {
+            if (activeRow) activeRow.classList.remove('is-active');
+            row.classList.add('is-active');
+            activeRow = row;
+
+            initialMessage.style.display = 'none';
+            noticeContentWrapper.style.display = 'block';
+
+            const formattedDate = formatKoreanDate(notice.created_at);
+
+            document.getElementById('detail-author').textContent = notice.author || '관리자';
+            document.getElementById('detail-date').textContent = formattedDate;
+            document.getElementById('detail-title').textContent = notice.title || '제목 없음';
+            document.getElementById('detail-content').innerHTML = notice.content || '내용 없음';
+
+            const attachmentsContainer = document.getElementById('detail-attachments');
+            const attachmentsList = document.getElementById('attachment-list');
+            attachmentsList.innerHTML = '';
+
+            if (notice.attachments && notice.attachments.length > 0) {
+                attachmentsContainer.style.display = 'block';
+                notice.attachments.forEach(attachment => {
+                    const listItem = document.createElement('li');
+                    const fileName = attachment.split('/').pop().split('?')[0];
+                    listItem.innerHTML = `<a href="${attachment}" target="_blank">${decodeURIComponent(fileName)}</a>`;
+                    attachmentsList.appendChild(listItem);
+                });
+            } else {
+                attachmentsContainer.style.display = 'none';
+            }
+        }
+
+        fetchNotices();
+    });
+</script>
+{% endblock %}

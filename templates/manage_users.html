@@ -1,78 +1,77 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="UTF-8">
-  <title>직원 관리</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='manage_users.css') }}">
-</head>
-<body>
+{# templates/manage_users.html #}
+{% extends "layout.html" %}
+{% set active = 'manage-users' %}
 
+{% block title %}직원 관리{% endblock %}
+
+{% block content %}
   <div class="header">
     <h2>👥 직원 관리</h2>
-    <a href="/admin" class="btn">← 관리자 페이지로 돌아가기</a>
+    <a href="{{ url_for('admin_vacation') }}" class="btn">← 관리자 페이지로 돌아가기</a>
   </div>
 
-  <!-- ✅ 신규 직원 등록 -->
-  <form method="POST" action="/add-user" class="register-form">
-    <div class="form-group">
-      <label for="name">이름</label>
-      <input type="text" id="name" name="name" required>
-    </div>
-    <div class="form-group">
-      <label for="email">이메일</label>
-      <input type="email" id="email" name="email" required>
-    </div>
-    <div class="form-group">
-      <label for="password">비밀번호</label>
-      <input type="text" id="password" name="password" required>
-    </div>
-    <div class="form-group">
-      <label for="join_date">입사일</label>
-      <input type="date" id="join_date" name="join_date" required>
-    </div>
-    <div style="text-align: center;">
-      <button type="submit" class="btn">등록</button>
-    </div>
-  </form>
+  <div class="content-container">
+    <!-- 신규 직원 등록 -->
+    <form method="POST" action="{{ url_for('add_user') }}" class="register-form">
+      <h3>신규 직원 등록</h3>
+      <div class="form-group">
+        <label for="name">이름</label>
+        <input type="text" id="name" name="name" required>
+      </div>
+      <div class="form-group">
+        <label for="email">이메일</label>
+        <input type="email" id="email" name="email" required>
+      </div>
+      <div class="form-group">
+        <label for="password">비밀번호</label>
+        <input type="text" id="password" name="password" required>
+      </div>
+      <div class="form-group">
+        <label for="join_date">입사일</label>
+        <input type="date" id="join_date" name="join_date" required>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn">등록</button>
+      </div>
+    </form>
 
-  <!-- ✅ 직원 목록 테이블 -->
-  <div class="table-container">
-    <table>
-      <thead>
-        <tr>
-          <th>이름</th>
-          <th>이메일</th>
-          <th>입사일</th>
-          <th>입사일 수정</th>
-          <th>삭제</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for u in users %}
-          {% if u.role != 'admin' %}
+    <!-- 직원 목록 테이블 -->
+    <div class="table-container">
+      <table class="attendance-table">
+        <thead>
           <tr>
-            <form method="POST" action="/update-join-date">
-              <td>{{ u.name }}</td>
-              <td>{{ u.email }}</td>
-              <td>
-                <input type="hidden" name="id" value="{{ u.id }}">
-                <input type="date" name="join_date" value="{{ u.join_date }}">
-              </td>
-              <td>
-                <button type="submit" class="btn">변경</button>
-              </td>
-            </form>
-            <td>
-              <form method="POST" action="/delete-user/{{ u.id }}" onsubmit="return confirm('정말 삭제하시겠습니까?');">
-                <button type="submit" class="btn" style="background-color:#dc3545;">삭제</button>
-              </form>
-            </td>
+            <th>이름</th>
+            <th>이메일</th>
+            <th>입사일</th>
+            <th>입사일 수정</th>
+            <th>삭제</th>
           </tr>
-          {% endif %}
-        {% endfor %}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {% for u in users if u.role != 'admin' %}
+            <tr>
+              <form method="POST" action="{{ url_for('update_join_date') }}">
+                <td>{{ u.name }}</td>
+                <td>{{ u.email }}</td>
+                <td>
+                  <input type="hidden" name="id" value="{{ u.id }}">
+                  <input type="date" name="join_date" value="{{ u.join_date }}">
+                </td>
+                <td>
+                  <button type="submit" class="btn">변경</button>
+                </td>
+              </form>
+              <td>
+                <form method="POST"
+                      action="{{ url_for('delete_user', user_id=u.id) }}"
+                      onsubmit="return confirm('정말 삭제하시겠습니까?');">
+                  <button type="submit" class="btn btn-danger">삭제</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
-
-</body>
-</html>
+{% endblock %}
