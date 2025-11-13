@@ -384,8 +384,8 @@ def admin_vacation():
             "auto_monthly": auto_m,
             "used_yearly": round(used_y,2),
             "used_monthly": round(used_m,2),
-            "remain_yearly": max(auto_y-used_y,0),
-            "remain_monthly": max(auto_m-used_m,0)
+            "remain_yearly": round(auto_y - used_y, 2),
+            "remain_monthly": round(auto_m - used_m, 2)
         }
     user_stats = list(user_stats_dict.values())
 
@@ -810,14 +810,14 @@ def monthly_stats():
         "Authorization": f"Bearer {SUPABASE_KEY}"
     }
 
-    # 승인된 휴가 전체 조회 (user 이름 포함)
+    # 승인된 휴가 전체 조회
     res = requests.get(
         f"{SUPABASE_URL}/rest/v1/vacations?status=eq.approved&select=id,start_date,end_date,used_days,type,user_id,users(name)",
         headers=headers
     )
     vacations = res.json() if res.status_code == 200 else []
 
-    # 👉 월별 휴가 사용 일수 집계 {유저명: {yyyy-mm: 총 사용일수}}
+    # 👉 월별 휴가 사용 일수 집계 {유저명: {yyyy-mm: 일수}}
     monthly_stats = defaultdict(lambda: defaultdict(float))
 
     for v in vacations:
@@ -827,13 +827,19 @@ def monthly_stats():
             start_date = parse(v["start_date"])
             used_days = float(v.get("used_days", 0))
         except Exception:
-            continue  # 파싱 오류 시 건너뜀
+            continue
 
-        # 시작월을 기준으로 집계
         month_key = start_date.strftime("%Y-%m")
         monthly_stats[user][month_key] += used_days
 
+    # 🔥 현재 월 강제로 포함시키기
+    current_month_key = datetime.now().strftime("%Y-%m")
+
+    for user in monthly_stats:
+        monthly_stats[user].setdefault(current_month_key, 0.0)
+
     return render_template("monthly_stats.html", user=session['user'], stats=monthly_stats)
+
 
 @app.route('/download-stats')
 def download_stats():
@@ -950,8 +956,8 @@ def download_stats():
         used_yearly = round(used_yearly, 2)
         used_monthly = round(used_monthly, 2)
 
-        remain_yearly = max(total_yearly - used_yearly, 0)
-        remain_monthly = max(total_monthly - used_monthly, 0)
+        remain_yearly = total_yearly - used_yearly
+        remain_monthly = total_monthly - used_monthly
 
         rows.append({
             "직원명": name,
@@ -1518,16 +1524,16 @@ def request_vacation():
     remaining_yearly = max(auto_yearly_leave - current_used_yearly, 0)
 
     # 잔여 휴가 확인
-    sufficient_leave = True
+    # 부족해도 신청 가능 — 음수로 떨어질 수 있음
     if deduct_from_type_to_save == "monthly" and remaining_monthly < used_days:
-        flash(f"❌ 월차가 부족합니다. 현재 잔여: {remaining_monthly}일", "warning")
-        sufficient_leave = False
-    elif deduct_from_type_to_save == "yearly" and remaining_yearly < used_days:
-        flash(f"❌ 연차가 부족합니다. 현재 잔여: {remaining_yearly}일", "warning")
-        sufficient_leave = False
+        flash(f"⚠ 월차가 부족하지만 신청은 가능합니다. 현재 잔여: {remaining_monthly}일 → 신청 후 {remaining_monthly - used_days}일", "warning")
 
-    if not sufficient_leave:
-        return redirect(url_for('main_dashboard')) # '/dashboard' -> url_for('main_dashboard')으로 변경
+    elif deduct_from_type_to_save == "yearly" and remaining_yearly < used_days:
+        flash(f"⚠ 연차가 부족하지만 신청은 가능합니다. 현재 잔여: {remaining_yearly}일 → 신청 후 {remaining_yearly - used_days}일", "warning")
+
+    # ❌ 신청 차단 로직 삭제
+    # if not sufficient_leave:
+    #     return redirect(url_for('main_dashboard'))
 
     # Supabase에 휴가 신청 데이터 저장
     headers["Content-Type"] = "application/json"
