@@ -13,6 +13,7 @@ from flask import send_file
 import requests
 import pytz
 import re
+import time
 from supabase import create_client
 
 load_dotenv()
@@ -1791,32 +1792,63 @@ def get_notices_api():
 @app.route('/admin/notices/create', methods=['GET', 'POST'])
 def create_notice():
     """
-    공지사항 작성 폼을 렌더링하고,
-    POST면 Supabase에 저장 후 관리 페이지로 리다이렉트합니다.
+    공지사항 작성 페이지 및 파일 업로드 처리
+    - Supabase Storage (notice-files 버킷)에 파일 업로드
+    - DB에는 업로드된 파일의 Public URL 저장
     """
     if 'user' not in session or session['user']['role'] != 'admin':
         flash("공지사항 생성 권한이 없습니다.", "danger")
         return redirect(url_for('login'))
-        
+
     if request.method == 'POST':
-        title = request.form.get('title')
-        content = request.form.get('content')
+        title = request.form.get('title', '').strip()
+        content = request.form.get('content', '').strip()
         attachments = request.files.getlist('attachments')
 
-        # 파일 이름 콤마로 저장
-        attachment_names = [f.filename for f in attachments if f.filename]
-        attachments_str = ','.join(attachment_names) if attachment_names else None
+        uploaded_urls = []
+        bucket = supabase.storage.from_("notice-files")
 
+        # ========== 1) 첨부파일 업로드 ==========
+        for f in attachments:
+            if not f or not f.filename:
+                continue
+
+            # 파일 안전한 이름 생성 (타임스탬프_원본파일)
+            timestamp = int(time.time())
+            safe_name = f"{timestamp}_{f.filename}"
+
+            try:
+                # Storage 업로드
+                bucket.upload(
+                    path=f"notices/{safe_name}",
+                    file=f.read(),
+                    file_options={"content-type": f.mimetype}
+                )
+
+                # Public URL 생성
+                public_url = bucket.get_public_url(f"notices/{safe_name}")
+                uploaded_urls.append(public_url)
+
+            except Exception as e:
+                print(f"[ERROR] 파일 업로드 실패: {e}")
+                flash(f"❌ '{f.filename}' 업로드 실패", "danger")
+
+        # URL 콤마로 합치기
+        attachments_str = ",".join(uploaded_urls) if uploaded_urls else None
+
+        # ========== 2) 공지사항 DB 저장 ==========
         headers = {
             "apikey": SUPABASE_KEY,
             "Authorization": f"Bearer {SUPABASE_KEY}",
             "Content-Type": "application/json",
             "Prefer": "return=representation"
         }
+
         data = {
             "title": title,
             "content": content,
-            "attachments": attachments_str
+            "attachments": attachments_str,
+            "user_id": session['user']['id']
         }
 
         try:
@@ -1826,18 +1858,20 @@ def create_notice():
                 data=json.dumps(data)
             )
             res.raise_for_status()
-            flash("✅ 공지사항이 생성되었습니다.", "success")
-        except requests.exceptions.RequestException as e:
-            print(f"Error creating notice: {e}")
-            flash("❌ 공지사항 생성에 실패했습니다.", "danger")
 
-        return redirect(url_for('manage_notices'))
+            flash("📢 공지사항이 성공적으로 등록되었습니다.", "success")
+            return redirect(url_for('manage_notices'))
 
-    # ── GET: 폼 렌더링 ──
+        except Exception as e:
+            print(f"[ERROR] 공지사항 DB 저장 실패: {e}")
+            flash("❌ 공지사항 저장 중 오류가 발생했습니다.", "danger")
+            return redirect(url_for('create_notice'))
+
+    # ===== GET (폼 렌더링) =====
     return render_template(
         'create_notice.html',
         user=session['user'],
-        active='create-notice'      # 사이드바 하이라이트용
+        active='create-notice'
     )
 # ✅ 공지사항 상세 정보 JSON 반환 API
 @app.route('/api/notices/<int:notice_id>')
@@ -1922,20 +1956,65 @@ def manage_notices():
 
 @app.route('/notices/<string:notice_id>/delete', methods=['POST'])
 def delete_notice(notice_id):
-    resp = supabase\
-        .table('notices')\
-        .delete()\
-        .eq('id', notice_id)\
-        .execute()
 
-    # Supabase v2+ 에서는 .error 가 없으므로 status_code 로 검사
-    status = getattr(resp, 'status_code', None)
-    if status == 204:
-        flash('✅ 공지사항이 삭제되었습니다.', 'success')
-    else:
-        flash(f'❌ 삭제 중 오류가 발생했습니다. (status {status})', 'danger')
+    try:
+        # -------------------------------
+        # 1) DB에서 첨부파일 목록 조회
+        # -------------------------------
+        notice_resp = supabase.table('notices') \
+            .select("attachments") \
+            .eq("id", notice_id) \
+            .single() \
+            .execute()
+
+        notice = notice_resp.data
+        attachments = notice.get("attachments") if notice else None
+
+        # -------------------------------
+        # 2) Storage 실제 파일 목록 조회
+        # -------------------------------
+        bucket = supabase.storage.from_("notice-files")
+        stored_files = bucket.list("notices")   # notices 폴더 목록
+        stored_names = {f["name"] for f in stored_files}
+
+        # -------------------------------
+        # 3) 삭제 대상 파일 구성
+        # -------------------------------
+        real_delete = []
+
+        if attachments:
+            raw_files = [f.strip() for f in attachments.split(",") if f.strip()]
+
+            for item in raw_files:
+
+                # URL이라면 파일명만 가져오기
+                if item.startswith("http"):
+                    filename = item.split("/")[-1].split("?")[0]
+                else:
+                    filename = item.strip()
+
+                # Storage 안에 실제 파일이 존재할 때만 삭제 대상 추가
+                if filename in stored_names:
+                    real_delete.append(f"notices/{filename}")
+
+        # -------------------------------
+        # 4) Storage 파일 삭제 실행
+        # -------------------------------
+        if real_delete:
+            bucket.remove(real_delete)
+
+        # -------------------------------
+        # 5) DB에서 공지사항 삭제
+        # -------------------------------
+        supabase.table("notices").delete().eq("id", notice_id).execute()
+
+        flash("✅ 공지사항 및 첨부파일이 삭제되었습니다.", "success")
+
+    except Exception as e:
+        print("[DELETE ERROR]", e)
+        flash("❌ 삭제 중 오류가 발생했습니다.", "danger")
+
     return redirect(url_for('manage_notices'))
-
 
 @app.route('/notices/<string:notice_id>/edit', methods=['GET', 'POST'])
 def edit_notice(notice_id):
